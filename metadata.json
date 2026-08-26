@@ -1,0 +1,6 @@
+{
+  "name": "UNIPACK S.A.S. - Sistema de Registro Industrial",
+  "description": "Sistema de registro industrial y control operativo para máquinas formadoras, mantenimiento y producción en UNIPACK S.A.S.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
