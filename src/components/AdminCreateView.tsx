@@ -39,7 +39,7 @@ export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreat
     autoGenerateUser(val);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAlert(null);
 
@@ -59,7 +59,7 @@ export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreat
       return;
     }
 
-    const res = AuthService.register(fullName, user, pass, role);
+    const res = await AuthService.register(fullName, user, pass, role);
     if (res.success) {
       setAlert({
         type: 'success',

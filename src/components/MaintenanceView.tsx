@@ -126,6 +126,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       status: 'EN_PROCESO'
     };
 
+    // Guardado inicial y sync en vivo
     setCurrentRecord(newReport);
     setIsFormOpen(true);
     setValidationAlert('');
@@ -154,9 +155,9 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     setTotalDowntimeMin(undefined);
     setSolvingTechnician('');
 
-    // Guardado inicial y sync en vivo
-    const saved = RecordService.saveMaintenanceRecord(newReport);
-    onUpdateRecords(saved);
+    RecordService.saveMaintenanceRecord(newReport).catch((err) => {
+      console.error('Error saving new report to Firestore:', err);
+    });
     triggerSaveNotification();
   };
 
@@ -215,8 +216,9 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     };
 
     setCurrentRecord(updated);
-    const saved = RecordService.saveMaintenanceRecord(updated);
-    onUpdateRecords(saved);
+    RecordService.saveMaintenanceRecord(updated).catch((err) => {
+      console.error('Error saving updated report to Firestore:', err);
+    });
   };
 
   const handlePauseReport = () => {
@@ -248,8 +250,9 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       status: 'PAUSADO'
     };
 
-    const saved = RecordService.saveMaintenanceRecord(paused);
-    onUpdateRecords(saved);
+    RecordService.saveMaintenanceRecord(paused).catch((err) => {
+      console.error('Error saving paused report to Firestore:', err);
+    });
     setIsFormOpen(false);
     setCurrentRecord(null);
   };
@@ -322,8 +325,9 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       status: 'FINALIZADO'
     };
 
-    const saved = RecordService.saveMaintenanceRecord(finalized);
-    onUpdateRecords(saved);
+    RecordService.saveMaintenanceRecord(finalized).catch((err) => {
+      console.error('Error saving finalized report to Firestore:', err);
+    });
     setIsFormOpen(false);
     setCurrentRecord(null);
   };
@@ -379,17 +383,20 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     setActiveTab('INGRESAR');
   };
 
-  const handleDeleteReport = (id: string) => {
+  const handleDeleteReport = async (id: string) => {
     if (session?.role !== 'Administrador') {
       alert('Acción restringida: solo los usuarios administradores pueden eliminar reportes.');
       return;
     }
     if (window.confirm('¿Está seguro de eliminar este reporte de mantenimiento?')) {
-      const remaining = RecordService.deleteMaintenanceRecord(id);
-      onUpdateRecords(remaining);
-      if (currentRecord?.id === id) {
-        setIsFormOpen(false);
-        setCurrentRecord(null);
+      try {
+        await RecordService.deleteMaintenanceRecord(id);
+        if (currentRecord?.id === id) {
+          setIsFormOpen(false);
+          setCurrentRecord(null);
+        }
+      } catch (e) {
+        alert('Error al eliminar el reporte de la base de datos.');
       }
     }
   };

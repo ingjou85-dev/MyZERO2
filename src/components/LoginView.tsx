@@ -14,18 +14,23 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setIsLoading(true);
 
-    const res = AuthService.login(username.trim().toUpperCase(), password.trim());
-    setIsLoading(false);
+    try {
+      const res = await AuthService.login(username.trim().toUpperCase(), password.trim());
+      setIsLoading(false);
 
-    if (res.success && res.session) {
-      onLoginSuccess(res.session);
-    } else {
-      setErrorMsg(res.message || 'Error al iniciar sesión.');
+      if (res.success && res.session) {
+        onLoginSuccess(res.session);
+      } else {
+        setErrorMsg(res.message || 'Error al iniciar sesión.');
+      }
+    } catch (e: any) {
+      setIsLoading(false);
+      setErrorMsg(e?.message || 'Error al conectar con el servidor de autenticación.');
     }
   };
 

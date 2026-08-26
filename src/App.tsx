@@ -29,13 +29,30 @@ export default function App() {
   const [productionTurnRecords, setProductionTurnRecords] = useState<ProductionTurnRecord[]>([]);
   const [usersList, setUsersList] = useState<UserAccount[]>([]);
 
-  // Load initial data
+  // Load session & subscribe to real-time Firestore collections
   useEffect(() => {
     const existingSession = AuthService.getSession();
     if (existingSession) {
       setSession(existingSession);
     }
-    refreshData();
+
+    const unsubMaint = RecordService.subscribeMaintenanceRecords((recs) => {
+      setMaintenanceRecords(recs);
+    });
+
+    const unsubTurns = RecordService.subscribeProductionTurnRecords((turns) => {
+      setProductionTurnRecords(turns);
+    });
+
+    const unsubUsers = AuthService.subscribeUsers((users) => {
+      setUsersList(users);
+    });
+
+    return () => {
+      unsubMaint();
+      unsubTurns();
+      unsubUsers();
+    };
   }, []);
 
   const refreshData = () => {
@@ -47,7 +64,6 @@ export default function App() {
   const handleLoginSuccess = (newSession: UserSession) => {
     setSession(newSession);
     setActiveView('HOME');
-    refreshData();
   };
 
   const handleLogout = () => {
@@ -61,12 +77,11 @@ export default function App() {
     setIsProductionModalOpen(true);
   };
 
-  const handleSaveProductionTurnRecord = (rec: ProductionTurnRecord) => {
-    const updated = RecordService.saveProductionTurnRecord(rec);
-    setProductionTurnRecords(updated);
+  const handleSaveProductionTurnRecord = async (rec: ProductionTurnRecord) => {
+    await RecordService.saveProductionTurnRecord(rec);
   };
 
-  const handleUpdateMaintenanceRecords = (recs: MaintenanceRecord[]) => {
+  const handleUpdateMaintenanceRecords = async (recs: MaintenanceRecord[]) => {
     setMaintenanceRecords(recs);
   };
 

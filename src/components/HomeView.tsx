@@ -50,7 +50,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
   };
 
-  const handleFinalizeTurn = () => {
+  const handleFinalizeTurn = async () => {
     setFinalizeAlert(null);
     const { hasPending, countMaint, countProd } = RecordService.hasPendingRecords();
 
@@ -67,7 +67,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
 
     if (session?.fullName) {
-      RecordService.finalizeActiveTurnForUser(session.fullName);
+      await RecordService.finalizeActiveTurnForUser(session.fullName);
     }
     onRefreshData();
 

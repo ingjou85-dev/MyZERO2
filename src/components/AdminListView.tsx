@@ -12,7 +12,7 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
 
-  const handleToggleStatus = (u: UserAccount) => {
+  const handleToggleStatus = async (u: UserAccount) => {
     if (u.user === 'JTORREGROSA') {
       alert('La cuenta de Administrador principal no puede ser desactivada.');
       return;
@@ -21,7 +21,7 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
       ...u,
       status: u.status === 'Activo' ? 'Inactivo' : 'Activo'
     };
-    AuthService.updateUser(updated);
+    await AuthService.updateUser(updated);
     onRefreshUsers();
   };
 
@@ -30,7 +30,7 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
     setNewPassword('');
   };
 
-  const handleSavePassword = (e: React.FormEvent) => {
+  const handleSavePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser || newPassword.length < 4) {
       alert('La contraseña debe tener mínimo 4 caracteres.');
@@ -38,7 +38,7 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
     }
     const userToEdit = users.find((u) => u.user === editingUser);
     if (userToEdit) {
-      AuthService.updateUser({ ...userToEdit, pass: newPassword });
+      await AuthService.updateUser({ ...userToEdit, pass: newPassword });
       alert(`Contraseña actualizada para ${editingUser}.`);
       setEditingUser(null);
       setNewPassword('');
@@ -46,13 +46,13 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
     }
   };
 
-  const handleDeleteUser = (username: string) => {
+  const handleDeleteUser = async (username: string) => {
     if (username === 'JTORREGROSA') {
       alert('La cuenta de Administrador principal no puede ser eliminada.');
       return;
     }
     if (window.confirm(`¿Está seguro de eliminar al usuario ${username}?`)) {
-      AuthService.deleteUser(username);
+      await AuthService.deleteUser(username);
       onRefreshUsers();
     }
   };

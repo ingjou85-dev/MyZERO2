@@ -1,54 +1,116 @@
 import * as XLSX from 'xlsx';
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  Unsubscribe,
+  getDocs
+} from 'firebase/firestore';
+import { db } from '../firebase.js';
 import { MaintenanceRecord, ProductionTurnRecord, ProductionQualityRecord } from '../types.ts';
 
-const MAINT_RECORDS_KEY = 'unipack_records_v1';
-const PROD_TURNS_KEY = 'unipack_prod_records_v1';
-const PROD_QUALITY_KEY = 'unipack_prod_quality_v1';
+const MAINT_COLLECTION = 'maintenance_records';
+const TURNS_COLLECTION = 'production_turns';
+const QUALITY_COLLECTION = 'production_quality_records';
+
+// In-memory caches updated by real-time listeners for fast synchronous utility lookups
+let cachedMaintenanceRecords: MaintenanceRecord[] = [];
+let cachedProductionTurnRecords: ProductionTurnRecord[] = [];
+let cachedProductionQualityRecords: ProductionQualityRecord[] = [];
 
 export const RecordService = {
+  // --- REAL-TIME LISTENERS ---
+  subscribeMaintenanceRecords: (callback: (records: MaintenanceRecord[]) => void): Unsubscribe => {
+    const colRef = collection(db, MAINT_COLLECTION);
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const records: MaintenanceRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          records.push({ id: docSnap.id, ...docSnap.data() } as MaintenanceRecord);
+        });
+        // Sort descending by date / ID
+        records.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id));
+        cachedMaintenanceRecords = records;
+        callback(records);
+      },
+      (error) => {
+        console.error('Error listening to maintenance_records in Firestore:', error);
+      }
+    );
+  },
+
+  subscribeProductionTurnRecords: (callback: (records: ProductionTurnRecord[]) => void): Unsubscribe => {
+    const colRef = collection(db, TURNS_COLLECTION);
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const records: ProductionTurnRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          records.push({ id: docSnap.id, ...docSnap.data() } as ProductionTurnRecord);
+        });
+        records.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || b.id.localeCompare(a.id));
+        cachedProductionTurnRecords = records;
+        callback(records);
+      },
+      (error) => {
+        console.error('Error listening to production_turns in Firestore:', error);
+      }
+    );
+  },
+
+  subscribeProductionQualityRecords: (callback: (records: ProductionQualityRecord[]) => void): Unsubscribe => {
+    const colRef = collection(db, QUALITY_COLLECTION);
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const records: ProductionQualityRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          records.push({ id: docSnap.id, ...docSnap.data() } as ProductionQualityRecord);
+        });
+        records.sort((a, b) => (b.boxNumber || 0) - (a.boxNumber || 0));
+        cachedProductionQualityRecords = records;
+        callback(records);
+      },
+      (error) => {
+        console.error('Error listening to production_quality_records in Firestore:', error);
+      }
+    );
+  },
+
   // --- MANTENIMIENTO ---
   getMaintenanceRecords: (): MaintenanceRecord[] => {
+    return cachedMaintenanceRecords;
+  },
+
+  saveMaintenanceRecord: async (record: MaintenanceRecord): Promise<void> => {
     try {
-      const data = localStorage.getItem(MAINT_RECORDS_KEY);
-      if (!data) return [];
-      const parsed = JSON.parse(data);
-      return Array.isArray(parsed) ? parsed.filter((r) => r.module === 'MAINTENANCE') : [];
-    } catch {
-      return [];
+      const docRef = doc(db, MAINT_COLLECTION, record.id);
+      // Clean undefined values for Firestore
+      const cleanData = JSON.parse(JSON.stringify(record));
+      await setDoc(docRef, cleanData, { merge: true });
+    } catch (error) {
+      console.error('Error saving maintenance record in Firestore:', error);
+      throw error;
     }
   },
 
-  saveMaintenanceRecord: (record: MaintenanceRecord): MaintenanceRecord[] => {
+  deleteMaintenanceRecord: async (id: string): Promise<void> => {
     try {
-      const all = RecordService.getMaintenanceRecords();
-      const idx = all.findIndex((r) => r.id === record.id);
-      if (idx >= 0) {
-        all[idx] = record;
-      } else {
-        all.unshift(record);
-      }
-      localStorage.setItem(MAINT_RECORDS_KEY, JSON.stringify(all));
-      return all;
-    } catch {
-      return [];
-    }
-  },
-
-  deleteMaintenanceRecord: (id: string): MaintenanceRecord[] => {
-    try {
-      let all = RecordService.getMaintenanceRecords();
-      all = all.filter((r) => r.id !== id);
-      localStorage.setItem(MAINT_RECORDS_KEY, JSON.stringify(all));
-      return all;
-    } catch {
-      return [];
+      const docRef = doc(db, MAINT_COLLECTION, id);
+      await deleteDoc(docRef);
+    } catch (error) {
+      console.error('Error deleting maintenance record in Firestore:', error);
+      throw error;
     }
   },
 
   exportMaintenanceToExcel: (records: MaintenanceRecord[]): void => {
     try {
-      // Column order exact to page 3 of PDF:
-      // TURNO, FECHA, MAQUINA, HORA INICIO FALLA, HORA LLEGADA TECNICO, DEFECTO, SOLUCION, HORA SOLUCION, TECNICO
       const data = records.map((r) => {
         const defectsStr =
           r.defects && r.defects.length > 0 ? r.defects.join(', ') : r.defect || '-';
@@ -84,96 +146,69 @@ export const RecordService = {
 
   // --- TURNOS DE PRODUCCIÓN ---
   getProductionTurnRecords: (): ProductionTurnRecord[] => {
-    try {
-      const data = localStorage.getItem(PROD_TURNS_KEY);
-      return data ? JSON.parse(data) : [];
-    } catch {
-      return [];
-    }
+    return cachedProductionTurnRecords;
   },
 
   getActiveTurnForUser: (packerName: string): ProductionTurnRecord | undefined => {
-    const turns = RecordService.getProductionTurnRecords();
-    return turns.find(
+    return cachedProductionTurnRecords.find(
       (t) => t.packer.toUpperCase() === packerName.toUpperCase() && t.status !== 'Finalizado'
     );
   },
 
-  saveProductionTurnRecord: (record: ProductionTurnRecord): ProductionTurnRecord[] => {
+  saveProductionTurnRecord: async (record: ProductionTurnRecord): Promise<void> => {
     try {
-      const recs = RecordService.getProductionTurnRecords();
-      const existingIdx = recs.findIndex(
-        (t) => t.id === record.id || (t.packer.toUpperCase() === record.packer.toUpperCase() && t.status !== 'Finalizado')
-      );
-      if (existingIdx >= 0) {
-        recs[existingIdx] = { ...recs[existingIdx], ...record };
-      } else {
-        recs.unshift({ ...record, status: record.status || 'Activo' });
-      }
-      localStorage.setItem(PROD_TURNS_KEY, JSON.stringify(recs));
-      return recs;
-    } catch {
-      return [];
+      const docRef = doc(db, TURNS_COLLECTION, record.id);
+      const cleanData = JSON.parse(JSON.stringify(record));
+      await setDoc(docRef, cleanData, { merge: true });
+    } catch (error) {
+      console.error('Error saving production turn in Firestore:', error);
+      throw error;
     }
   },
 
-  finalizeActiveTurnForUser: (packerName: string): ProductionTurnRecord[] => {
+  finalizeActiveTurnForUser: async (packerName: string): Promise<void> => {
     try {
-      const recs = RecordService.getProductionTurnRecords();
-      const updated = recs.map((t) => {
-        if (t.packer.toUpperCase() === packerName.toUpperCase() && t.status !== 'Finalizado') {
-          return { ...t, status: 'Finalizado' as const };
-        }
-        return t;
-      });
-      localStorage.setItem(PROD_TURNS_KEY, JSON.stringify(updated));
-      return updated;
-    } catch {
-      return [];
+      const activeTurns = cachedProductionTurnRecords.filter(
+        (t) => t.packer.toUpperCase() === packerName.toUpperCase() && t.status !== 'Finalizado'
+      );
+      for (const turn of activeTurns) {
+        const docRef = doc(db, TURNS_COLLECTION, turn.id);
+        await setDoc(docRef, { status: 'Finalizado' }, { merge: true });
+      }
+    } catch (error) {
+      console.error('Error finalizing turn in Firestore:', error);
+      throw error;
     }
   },
 
   // --- REGISTROS DE CALIDAD Y CAJAS DE PRODUCCIÓN ---
   getProductionQualityRecords: (): ProductionQualityRecord[] => {
+    return cachedProductionQualityRecords;
+  },
+
+  saveProductionQualityRecord: async (record: ProductionQualityRecord): Promise<void> => {
     try {
-      const data = localStorage.getItem(PROD_QUALITY_KEY);
-      return data ? JSON.parse(data) : [];
-    } catch {
-      return [];
+      const docRef = doc(db, QUALITY_COLLECTION, record.id);
+      const cleanData = JSON.parse(JSON.stringify(record));
+      await setDoc(docRef, cleanData, { merge: true });
+    } catch (error) {
+      console.error('Error saving production quality record in Firestore:', error);
+      throw error;
     }
   },
 
-  saveProductionQualityRecord: (record: ProductionQualityRecord): ProductionQualityRecord[] => {
+  deleteProductionQualityRecord: async (id: string): Promise<void> => {
     try {
-      const all = RecordService.getProductionQualityRecords();
-      const idx = all.findIndex((r) => r.id === record.id);
-      if (idx >= 0) {
-        all[idx] = record;
-      } else {
-        all.unshift(record);
-      }
-      localStorage.setItem(PROD_QUALITY_KEY, JSON.stringify(all));
-      return all;
-    } catch {
-      return [];
-    }
-  },
-
-  deleteProductionQualityRecord: (id: string): ProductionQualityRecord[] => {
-    try {
-      let all = RecordService.getProductionQualityRecords();
-      all = all.filter((r) => r.id !== id);
-      localStorage.setItem(PROD_QUALITY_KEY, JSON.stringify(all));
-      return all;
-    } catch {
-      return [];
+      const docRef = doc(db, QUALITY_COLLECTION, id);
+      await deleteDoc(docRef);
+    } catch (error) {
+      console.error('Error deleting production quality record in Firestore:', error);
+      throw error;
     }
   },
 
   exportProductionQualityToExcel: (records: ProductionQualityRecord[]): void => {
     try {
-      // Column order exact to PDF:
-      // TURNO, FECHA, NRO CAJA, REFERENCIA, EMPACADOR, TECNICO, AUXILIAR, MAQUINA, PESO FONDO, PESO TAPA, PESO TOTAL, PRUEBA GOTEO, INSPECCION VISUAL, PRUEBA RASGADO, VISTO BUENO, OBSERVACIONES, ESTADO
       const data = records.map((r) => ({
         TURNO: r.shift || '-',
         FECHA: r.date,
@@ -204,9 +239,12 @@ export const RecordService = {
   },
 
   // Validación de pendientes para finalizar turno
-  hasPendingRecords: (): { hasPending: boolean; countMaint: number; countProd: number } => {
-    const maint = RecordService.getMaintenanceRecords();
-    const prod = RecordService.getProductionQualityRecords();
+  hasPendingRecords: (
+    maintList?: MaintenanceRecord[],
+    prodList?: ProductionQualityRecord[]
+  ): { hasPending: boolean; countMaint: number; countProd: number } => {
+    const maint = maintList || cachedMaintenanceRecords;
+    const prod = prodList || cachedProductionQualityRecords;
 
     const pendingMaint = maint.filter((r) => r.status === 'EN_PROCESO' || r.status === 'PAUSADO').length;
     const pendingProd = prod.filter((r) => r.status === 'EN_PROCESO' || r.status === 'PAUSADO').length;

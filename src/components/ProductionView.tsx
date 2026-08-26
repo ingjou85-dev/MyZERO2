@@ -68,7 +68,10 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
   const [filterDate, setFilterDate] = useState('');
 
   useEffect(() => {
-    loadRecords();
+    const unsub = RecordService.subscribeProductionQualityRecords((loaded) => {
+      setRecords(loaded);
+    });
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -149,8 +152,9 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     setApproval('APROBADO');
     setObservations('');
 
-    const saved = RecordService.saveProductionQualityRecord(newRec);
-    setRecords(saved);
+    RecordService.saveProductionQualityRecord(newRec).catch((err) => {
+      console.error('Error saving new box record to Firestore:', err);
+    });
     triggerAutoSaveBadge();
   };
 
@@ -196,8 +200,9 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
       status
     };
 
-    const updated = RecordService.saveProductionQualityRecord(recordToSave);
-    setRecords(updated);
+    RecordService.saveProductionQualityRecord(recordToSave).catch((err) => {
+      console.error('Error saving box record to Firestore:', err);
+    });
     triggerAutoSaveBadge();
 
     if (status === 'FINALIZADO' || status === 'PAUSADO') {
@@ -232,17 +237,20 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     setActiveTab('INGRESAR');
   };
 
-  const handleDeleteRecord = (id: string) => {
+  const handleDeleteRecord = async (id: string) => {
     if (session?.role !== 'Administrador') {
       alert('Acción restringida: solo los usuarios administradores pueden eliminar registros de producción.');
       return;
     }
     if (window.confirm('¿Está seguro de eliminar esta caja de inspección de calidad?')) {
-      const remaining = RecordService.deleteProductionQualityRecord(id);
-      setRecords(remaining);
-      if (currentRecord?.id === id) {
-        setIsFormOpen(false);
-        setCurrentRecord(null);
+      try {
+        await RecordService.deleteProductionQualityRecord(id);
+        if (currentRecord?.id === id) {
+          setIsFormOpen(false);
+          setCurrentRecord(null);
+        }
+      } catch (e) {
+        alert('Error al eliminar el registro de la base de datos.');
       }
     }
   };
