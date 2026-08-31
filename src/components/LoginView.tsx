@@ -104,12 +104,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         >
           {isLoading ? 'Iniciando sesión...' : 'Iniciar sesión'}
         </button>
-
-        <div className="pt-2 text-center">
-          <p className="text-[11px] text-slate-400">
-            Usuario inicial por defecto: <strong className="text-slate-600">JTORREGROSA</strong> / Clave: <strong className="text-slate-600">9927</strong>
-          </p>
-        </div>
       </form>
     </section>
   );

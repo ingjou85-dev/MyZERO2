@@ -116,7 +116,7 @@ export default function App() {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-center relative">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3.5 sm:p-6 lg:p-8 pb-20 md:pb-8 flex flex-col justify-center relative">
         {!session ? (
           <LoginView onLoginSuccess={handleLoginSuccess} />
         ) : (
@@ -135,6 +135,16 @@ export default function App() {
               <MaintenanceView
                 session={session}
                 records={maintenanceRecords}
+                activeTurn={
+                  session
+                    ? productionTurnRecords.find(
+                        (r) =>
+                          r.packer.toUpperCase() === session.fullName.toUpperCase() &&
+                          r.status !== 'Finalizado'
+                      ) || null
+                    : null
+                }
+                onOpenTurnModal={() => handleOpenProductionModal(null)}
                 onUpdateRecords={handleUpdateMaintenanceRecords}
               />
             )}
@@ -143,6 +153,16 @@ export default function App() {
               <ProductionView
                 session={session}
                 initialTab={productionInitialTab}
+                activeTurn={
+                  session
+                    ? productionTurnRecords.find(
+                        (r) =>
+                          r.packer.toUpperCase() === session.fullName.toUpperCase() &&
+                          r.status !== 'Finalizado'
+                      ) || null
+                    : null
+                }
+                onOpenTurnModal={() => handleOpenProductionModal(null)}
                 onSaved={() => {
                   refreshData();
                 }}

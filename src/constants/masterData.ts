@@ -1,4 +1,20 @@
 export const MASTER_DATA = {
+  stations: [
+    'Estación 51',
+    'Estación 53',
+    'Estación 54',
+    'Estación 55',
+    'Estación 4 oz',
+    'Estación 6 oz'
+  ],
+  stationMachines: {
+    'Estación 51': ['459', '4513', '4514', '4515', '4516'],
+    'Estación 53': ['451', '456', '4517', '4518', '4519'],
+    'Estación 54': ['452', '454', '4511', '4512', '4520'],
+    'Estación 55': ['453', '455', '457', '458', '4510'],
+    'Estación 4 oz': ['401', '402', '403', '404'],
+    'Estación 6 oz': ['601', '602', '603']
+  } as Record<string, string[]>,
   technicians: [
     'EDUARDO',
     'EMIL',
@@ -12,10 +28,20 @@ export const MASTER_DATA = {
     'EDUARDO V.'
   ],
   auxiliaries: [
-    'AUXILIAR 1',
-    'AUXILIAR 2',
-    'AUXILIAR 3',
-    'AUXILIAR GENERAL'
+    'CARLOS',
+    'JUAN',
+    'JAIRO',
+    'LUIS',
+    'JEISON',
+    'LUIS D.',
+    'DUVÁN',
+    'LEONARDO',
+    'CARLOS M.',
+    'PHINEAS'
+  ],
+  approvers: [
+    'PHINEAS',
+    'ALEXANDRA'
   ],
   defects: [
     'V1 - BORDE PICADO',
@@ -42,8 +68,7 @@ export const MASTER_DATA = {
     'V22 - VASO MACHUCADO',
     'V23 - BORDE GRUESO',
     'V24 - CAMBIO ROLLO',
-    'V25 - BORDE CON EMPALME DESALINEADO INTERIOR (BORDE CACHON)',
-    'Otro'
+    'V25 - BORDE CON EMPALME DESALINEADO INTERIOR (BORDE CACHON)'
   ],
   solutions: [
     'S1 - AJUSTE DE PRESION DEL MAGAZIN',
@@ -78,13 +103,11 @@ export const MASTER_DATA = {
     'S30 - LIMPIEZA DE COPA',
     'S31 - LUBRICAR CASQUILLO CON SILICONA (ACEITE FOOD)',
     'S32 - CUADRE DE ARO',
-    'S33 - CUADRE DE CASQUILLO',
-    'Otro'
+    'S33 - CUADRE DE CASQUILLO'
   ],
   shifts: [
-    'Turno 1 (6:00 AM - 2:00 PM)',
-    'Turno 2 (2:00 PM - 10:00 PM)',
-    'Turno 3 (10:00 PM - 6:00 AM)'
+    'Turno 1',
+    'Turno 2'
   ],
   machines: [
     '451',
@@ -116,10 +139,53 @@ export const MASTER_DATA = {
     '4520'
   ],
   references: [
-    'Vaso 4.5 oz',
-    'Vaso 7.0 oz',
-    'Vaso 8.0 oz',
-    'Vaso 12 oz',
-    'Vaso 16 oz'
-  ]
+    'LANCA 4,5 OZ',
+    'ECOTOUCH 4,5 OZ',
+    'VICTORIA BAY 4,5 OZ',
+    'PREMIUM 4,5 OZ',
+    'YESPAC 4,5 OZ',
+    'INDUSNIG 4,5 OZ',
+    'ECUADOR 4,5 OZ',
+    'ALEMANIA 4,5 OZ',
+    'FUTURE 4,5 OZ',
+    'UPAK 4,5 OZ',
+    'EMPRESS 4,5 OZ',
+    'INDUSMIDA 4,5 OZ',
+    'ALEMANIA 4 OZ',
+    'LANCA 4 OZ',
+    'CUP CONE 4 OZ',
+    'ECOTOUCH 4 OZ',
+    'ECUADOR EARTHWISE 4 OZ',
+    'FINO 4 OZ',
+    'ALEMANIA 6 OZ',
+    'INGLATERRA 6 OZ',
+    'PINILLAR 6 OZ',
+    'OLIMPICA 6 OZ'
+  ],
+  standardWeights: {
+    individualCup: [1.4, 1.7, 2.4],
+    foldingBox: [29.5, 34, 47.7],
+    finalBox: [89, 103, 129],
+    bottom: [1.4, 1.7, 2.4],
+    lid: [29.5, 34, 47.7],
+    total: [89, 103, 129]
+  },
+  qualityTestOptions: [
+    'Muestra 25 vasos - Hermético sin fugas',
+    'Muestra 50 vasos - 100% Hermético',
+    'Muestra 100 vasos - Sin goteo ni filtración',
+    'Muestra 20 vasos - Rasgado y sellado conforme',
+    'Prueba especial de llenado caliente'
+  ],
+  getStationForMachine: (machineNum: string): string => {
+    for (const [station, machines] of Object.entries(MASTER_DATA.stationMachines)) {
+      if (machines.includes(machineNum)) return station;
+    }
+    return '';
+  },
+  getMachinesForStation: (stationName?: string): string[] => {
+    if (!stationName) return MASTER_DATA.machines;
+    return MASTER_DATA.stationMachines[stationName] || MASTER_DATA.machines;
+  }
 };
+

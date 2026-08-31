@@ -19,9 +19,10 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
   onSaveRecord
 }) => {
   const [date, setDate] = useState('');
+  const [station, setStation] = useState(MASTER_DATA.stations[0]);
   const [shift, setShift] = useState(MASTER_DATA.shifts[0]);
   const [tech, setTech] = useState('');
-  const [aux, setAux] = useState('');
+  const [aux, setAux] = useState(MASTER_DATA.auxiliaries[0]);
   const [reference, setReference] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -29,15 +30,17 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
     if (isOpen) {
       if (initialRecord) {
         setDate(initialRecord.date || new Date().toISOString().split('T')[0]);
+        setStation(initialRecord.station || MASTER_DATA.stations[0]);
         setShift(initialRecord.shift || MASTER_DATA.shifts[0]);
         setTech(initialRecord.tech || '');
-        setAux(initialRecord.aux || '');
+        setAux(initialRecord.aux || MASTER_DATA.auxiliaries[0]);
         setReference(initialRecord.reference || '');
       } else {
         setDate(new Date().toISOString().split('T')[0]);
+        setStation(MASTER_DATA.stations[0]);
         setShift(MASTER_DATA.shifts[0]);
         setTech('');
-        setAux('');
+        setAux(MASTER_DATA.auxiliaries[0]);
         setReference('');
       }
       setErrorMsg('');
@@ -48,18 +51,19 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!date || !shift || !session?.fullName || !tech || !aux.trim() || !reference) {
+    if (!date || !station || !shift || !session?.fullName || !tech || !aux || !reference) {
       setErrorMsg('Por favor complete todos los campos obligatorios (*).');
       return;
     }
 
     const recToSave: ProductionTurnRecord = {
-      id: initialRecord?.id || 'prod-' + Date.now(),
+      id: initialRecord?.id || 'turn-' + Date.now(),
       date,
+      station,
       shift,
       packer: (initialRecord?.packer || session.fullName).toUpperCase(),
       tech,
-      aux: aux.trim().toUpperCase(),
+      aux,
       reference,
       createdAt: initialRecord?.createdAt || new Date().toISOString(),
       status: initialRecord?.status || 'Activo'
@@ -89,7 +93,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
           <button
             id="btn-close-production-modal"
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1"
+            className="text-slate-400 hover:text-white p-1 rounded-lg transition"
           >
             <X className="w-5 h-5" />
           </button>
@@ -120,7 +124,25 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
               />
             </div>
 
-            {/* 2. TURNO */}
+            {/* 2. ESTACIÓN */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Estación *</label>
+              <select
+                id="prodInpStation"
+                value={station}
+                onChange={(e) => setStation(e.target.value)}
+                required
+                className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-bold bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+              >
+                {MASTER_DATA.stations.map((st) => (
+                  <option key={st} value={st}>
+                    {st}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 3. TURNO (Turno 1 / Turno 2) */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Turno *</label>
               <select
@@ -138,10 +160,10 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
               </select>
             </div>
 
-            {/* 3. EMPACADOR (USUARIO ACTIVO) */}
-            <div className="sm:col-span-2">
+            {/* 4. EMPACADOR (USUARIO ACTIVO) */}
+            <div>
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                Empacador (Usuario Responsable) *
+                Empacador *
               </label>
               <input
                 type="text"
@@ -152,7 +174,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
               />
             </div>
 
-            {/* 4. TÉCNICO */}
+            {/* 5. TÉCNICO */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Técnico *</label>
               <select
@@ -162,7 +184,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                 required
                 className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-medium bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
               >
-                <option value="">-- Seleccionar --</option>
+                <option value="">-- Seleccionar Técnico --</option>
                 {MASTER_DATA.technicians.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -171,21 +193,25 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
               </select>
             </div>
 
-            {/* 5. AUXILIAR */}
+            {/* 6. AUXILIAR */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Auxiliar *</label>
-              <input
-                type="text"
+              <select
                 id="prodInpAux"
                 value={aux}
-                onChange={(e) => setAux(e.target.value.toUpperCase())}
+                onChange={(e) => setAux(e.target.value)}
                 required
-                placeholder="Nombre de auxiliar"
-                className="w-full border border-slate-300 p-2.5 rounded-lg text-xs focus:ring-2 focus:ring-emerald-600 focus:outline-none uppercase font-medium"
-              />
+                className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-medium bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+              >
+                {MASTER_DATA.auxiliaries.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* 6. REFERENCIA */}
+            {/* 7. REFERENCIA */}
             <div className="sm:col-span-2">
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Referencia *</label>
               <select
@@ -228,4 +254,5 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
     </div>
   );
 };
+
 

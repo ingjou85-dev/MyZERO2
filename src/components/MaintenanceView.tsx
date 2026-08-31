@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { MaintenanceRecord, MaintTab, UserSession } from '../types.ts';
+import { MaintenanceRecord, MaintTab, UserSession, ProductionTurnRecord } from '../types.ts';
 import { MASTER_DATA } from '../constants/masterData.ts';
 import { RecordService } from '../services/recordService.ts';
+import { MaintenanceSummaryTab } from './MaintenanceSummaryTab.tsx';
 import {
   FileText,
   Activity,
@@ -15,65 +16,84 @@ import {
   Save,
   AlertCircle,
   Pencil,
-  Check
+  ArrowRight,
+  ArrowLeft,
+  Wrench,
+  Lock,
+  Calendar,
+  Layers,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface MaintenanceViewProps {
   session: UserSession | null;
   records: MaintenanceRecord[];
+  activeTurn?: ProductionTurnRecord | null;
+  onOpenTurnModal?: () => void;
   onUpdateRecords: (records: MaintenanceRecord[]) => void;
 }
 
 export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   session,
   records,
+  activeTurn,
+  onOpenTurnModal,
   onUpdateRecords
 }) => {
   const [activeTab, setActiveTab] = useState<MaintTab>('INGRESAR');
   const [currentRecord, setCurrentRecord] = useState<MaintenanceRecord | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [currentStep, setCurrentStep] = useState<number>(1);
   const [validationAlert, setValidationAlert] = useState('');
   const [showAutoSave, setShowAutoSave] = useState(false);
 
   // Form Fields State
-  const [operator, setOperator] = useState('');
-  const [shift, setShift] = useState(MASTER_DATA.shifts[0]);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [technician, setTechnician] = useState('');
   const [machine, setMachine] = useState('');
-  const [reference, setReference] = useState('');
-
-  // Tiempos
   const [failureTime, setFailureTime] = useState('');
   const [technicianArrivalTime, setTechnicianArrivalTime] = useState('');
-  const [arrivalTimeMin, setArrivalTimeMin] = useState<number | undefined>(undefined);
-
-  // Selección Múltiple de Defectos
   const [selectedDefects, setSelectedDefects] = useState<string[]>([]);
   const [customDefect, setCustomDefect] = useState('');
-  const [showCustomDefectInput, setShowCustomDefectInput] = useState(false);
-
-  // Selección Múltiple de Soluciones
+  const [defectFilter, setDefectFilter] = useState('');
   const [selectedSolutions, setSelectedSolutions] = useState<string[]>([]);
   const [customSolution, setCustomSolution] = useState('');
-  const [showCustomSolutionInput, setShowCustomSolutionInput] = useState(false);
-
-  // Cierre y Resolución
+  const [solutionFilter, setSolutionFilter] = useState('');
   const [closingTime, setClosingTime] = useState('');
+  const [solvingTechnician, setSolvingTechnician] = useState('');
+  const [effectiveSolution, setEffectiveSolution] = useState<'Sí' | 'No'>('Sí');
+
+  // Calculated times
+  const [arrivalTimeMin, setArrivalTimeMin] = useState<number | undefined>(undefined);
   const [repairTimeMin, setRepairTimeMin] = useState<number | undefined>(undefined);
   const [totalDowntimeMin, setTotalDowntimeMin] = useState<number | undefined>(undefined);
-  const [solvingTechnician, setSolvingTechnician] = useState('');
 
-  // Table Filters
-  const [filterSearch, setFilterSearch] = useState('');
-  const [filterMachine, setFilterMachine] = useState('');
-  const [filterTechnician, setFilterTechnician] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  // Global Filters for Panel: SOLO 2 FILTROS PRINCIPALES (Fecha y Estación)
   const [filterDate, setFilterDate] = useState('');
+  const [filterStation, setFilterStation] = useState('');
+
+  // Máquinas filtradas dinámicamente por la estación del turno activo
+  const userStation = activeTurn?.station || (session?.role === 'Administrador' ? '' : 'Estación 51');
+  const availableMachines = userStation
+    ? MASTER_DATA.getMachinesForStation(userStation)
+    : MASTER_DATA.machines;
 
   const triggerSaveNotification = () => {
     setShowAutoSave(true);
     setTimeout(() => setShowAutoSave(false), 2000);
+  };
+
+  const getNowTimeString = () => {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  };
+
+  const compareTimes = (t1: string, t2: string): number => {
+    if (!t1 || !t2) return 0;
+    const [h1, m1] = t1.split(':').map(Number);
+    const [h2, m2] = t2.split(':').map(Number);
+    if (isNaN(h1) || isNaN(m1) || isNaN(h2) || isNaN(m2)) return 0;
+    return (h1 * 60 + m1) - (h2 * 60 + m2);
   };
 
   const calcDiffMin = (start?: string, end?: string): number => {
@@ -87,14 +107,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     return Math.max(0, eMin - sMin);
   };
 
-  const getNowTimeString = () => {
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
-  };
-
-  // Recalcular tiempos automáticamente en cambios
+  // Recalcular métricas de tiempo
   useEffect(() => {
     if (failureTime && technicianArrivalTime) {
       setArrivalTimeMin(calcDiffMin(failureTime, technicianArrivalTime));
@@ -116,44 +129,39 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   }, [failureTime, technicianArrivalTime, closingTime]);
 
   const handleStartNewReport = () => {
+    const initialMachine = availableMachines[0] || MASTER_DATA.machines[0];
+    const initialStation = userStation || MASTER_DATA.getStationForMachine(initialMachine) || 'Estación 51';
+
     const newReport: MaintenanceRecord = {
       id: 'rec-' + Date.now(),
       reportNumber: 'REP-' + Math.floor(100000 + Math.random() * 900000),
       module: 'MAINTENANCE',
-      date: new Date().toISOString().split('T')[0],
-      shift: MASTER_DATA.shifts[0],
+      date: activeTurn?.date || new Date().toISOString().split('T')[0],
+      station: initialStation,
+      shift: activeTurn?.shift || MASTER_DATA.shifts[0],
       operator: session?.fullName || '',
+      machine: initialMachine,
+      failureTime: getNowTimeString(),
       status: 'EN_PROCESO'
     };
 
-    // Guardado inicial y sync en vivo
     setCurrentRecord(newReport);
     setIsFormOpen(true);
+    setCurrentStep(1);
     setValidationAlert('');
 
-    setOperator(session?.fullName || '');
-    setShift(MASTER_DATA.shifts[0]);
-    setDate(newReport.date);
-    setTechnician('');
-    setMachine('');
-    setReference('');
-
-    setFailureTime(getNowTimeString());
+    setMachine(initialMachine);
+    setFailureTime(newReport.failureTime || getNowTimeString());
     setTechnicianArrivalTime('');
-    setArrivalTimeMin(undefined);
-
     setSelectedDefects([]);
     setCustomDefect('');
-    setShowCustomDefectInput(false);
-
+    setDefectFilter('');
     setSelectedSolutions([]);
     setCustomSolution('');
-    setShowCustomSolutionInput(false);
-
+    setSolutionFilter('');
     setClosingTime('');
-    setRepairTimeMin(undefined);
-    setTotalDowntimeMin(undefined);
-    setSolvingTechnician('');
+    setSolvingTechnician(MASTER_DATA.technicians[0]);
+    setEffectiveSolution('Sí');
 
     RecordService.saveMaintenanceRecord(newReport).catch((err) => {
       console.error('Error saving new report to Firestore:', err);
@@ -161,226 +169,263 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     triggerSaveNotification();
   };
 
-  const toggleDefectSelection = (def: string) => {
-    setSelectedDefects((prev) => {
-      const exists = prev.includes(def);
-      const next = exists ? prev.filter((d) => d !== def) : [...prev, def];
-      syncFormStateToRecord({ defects: next });
-      return next;
-    });
+  const getEffectiveDefect = () => {
+    const parts = [...selectedDefects];
+    if (customDefect.trim()) {
+      parts.push(customDefect.trim().toUpperCase());
+    }
+    return parts.join(', ');
   };
 
-  const toggleSolutionSelection = (sol: string) => {
-    setSelectedSolutions((prev) => {
-      const exists = prev.includes(sol);
-      const next = exists ? prev.filter((s) => s !== sol) : [...prev, sol];
-      syncFormStateToRecord({ solutions: next });
-      return next;
-    });
+  const getEffectiveDefectsList = () => {
+    const parts = [...selectedDefects];
+    if (customDefect.trim()) {
+      parts.push(customDefect.trim().toUpperCase());
+    }
+    return parts;
   };
 
-  // Sync en vivo de cambios al registro
-  const syncFormStateToRecord = (overrideFields: Partial<MaintenanceRecord> = {}) => {
+  const getEffectiveSolution = () => {
+    const parts = [...selectedSolutions];
+    if (customSolution.trim()) {
+      parts.push(customSolution.trim().toUpperCase());
+    }
+    return parts.join(', ');
+  };
+
+  const getEffectiveSolutionsList = () => {
+    const parts = [...selectedSolutions];
+    if (customSolution.trim()) {
+      parts.push(customSolution.trim().toUpperCase());
+    }
+    return parts;
+  };
+
+  const toggleDefect = (d: string) => {
+    setSelectedDefects((prev) =>
+      prev.includes(d) ? prev.filter((item) => item !== d) : [...prev, d]
+    );
+  };
+
+  const toggleSolution = (s: string) => {
+    setSelectedSolutions((prev) =>
+      prev.includes(s) ? prev.filter((item) => item !== s) : [...prev, s]
+    );
+  };
+
+  const syncCurrentDraft = (extraStatus?: 'EN_PROCESO' | 'PAUSADO' | 'FINALIZADO') => {
     if (!currentRecord) return;
-
-    const allDefects = [...selectedDefects];
-    if (customDefect.trim() && !allDefects.includes(customDefect.trim().toUpperCase())) {
-      allDefects.push(customDefect.trim().toUpperCase());
-    }
-
-    const allSolutions = [...selectedSolutions];
-    if (customSolution.trim() && !allSolutions.includes(customSolution.trim().toUpperCase())) {
-      allSolutions.push(customSolution.trim().toUpperCase());
-    }
+    const finalDef = getEffectiveDefect();
+    const finalSol = getEffectiveSolution();
+    const defsList = getEffectiveDefectsList();
+    const solsList = getEffectiveSolutionsList();
+    const currentMachineStation = MASTER_DATA.getStationForMachine(machine) || userStation || 'Estación 51';
 
     const updated: MaintenanceRecord = {
       ...currentRecord,
-      operator: operator.trim().toUpperCase(),
-      shift,
-      date,
-      technician,
+      station: currentMachineStation,
       machine,
-      reference,
       failureTime,
       technicianArrivalTime,
       arrivalTimeMin,
-      defects: allDefects,
-      defect: allDefects.join(', '),
-      solutions: allSolutions,
-      solution: allSolutions.join(', '),
+      defect: finalDef,
+      defects: defsList,
+      solution: finalSol,
+      solutions: solsList,
       closingTime,
       repairTimeMin,
       totalDowntimeMin,
       solvingTechnician,
-      ...overrideFields
+      technician: solvingTechnician,
+      effectiveSolution,
+      status: extraStatus || currentRecord.status
     };
 
     setCurrentRecord(updated);
     RecordService.saveMaintenanceRecord(updated).catch((err) => {
-      console.error('Error saving updated report to Firestore:', err);
+      console.error('Error saving report to Firestore:', err);
     });
+    triggerSaveNotification();
+  };
+
+  const handleNextStep = () => {
+    setValidationAlert('');
+    // Validación por paso individual
+    if (currentStep === 1 && !machine) {
+      setValidationAlert('Por favor seleccione la máquina.');
+      return;
+    }
+    if (currentStep === 2 && !failureTime) {
+      setValidationAlert('Por favor ingrese la hora de parada.');
+      return;
+    }
+    // Paso 3: Defecto Detectado
+    if (currentStep === 3) {
+      const defs = getEffectiveDefectsList();
+      if (defs.length === 0) {
+        setValidationAlert('Por favor seleccione al menos un defecto detectado o escriba uno nuevo.');
+        return;
+      }
+    }
+    // Paso 4: Hora de Llegada del Mecánico
+    if (currentStep === 4) {
+      if (!technicianArrivalTime) {
+        setValidationAlert('Por favor ingrese la hora de llegada del mecánico.');
+        return;
+      }
+      if (failureTime && compareTimes(technicianArrivalTime, failureTime) < 0) {
+        setValidationAlert(`⚠️ La hora de llegada del mecánico (${technicianArrivalTime}) no puede ser menor que la hora de parada (${failureTime}).`);
+        return;
+      }
+    }
+    // Paso 5: Solución Aplicada
+    if (currentStep === 5) {
+      const sols = getEffectiveSolutionsList();
+      if (sols.length === 0) {
+        setValidationAlert('Por favor seleccione al menos una solución aplicada o escriba una nueva.');
+        return;
+      }
+    }
+    // Paso 6: Hora Final de Solución / Cierre
+    if (currentStep === 6) {
+      if (!closingTime) {
+        setValidationAlert('Por favor ingrese la hora final de solución / cierre.');
+        return;
+      }
+      if (failureTime && compareTimes(closingTime, failureTime) < 0) {
+        setValidationAlert(`⚠️ La hora de cierre (${closingTime}) no puede ser menor que la hora de parada (${failureTime}).`);
+        return;
+      }
+      if (technicianArrivalTime && compareTimes(closingTime, technicianArrivalTime) < 0) {
+        setValidationAlert(`⚠️ La hora de cierre (${closingTime}) no puede ser menor que la hora de llegada del mecánico (${technicianArrivalTime}).`);
+        return;
+      }
+    }
+
+    syncCurrentDraft('EN_PROCESO');
+    setCurrentStep((prev) => Math.min(7, prev + 1));
+  };
+
+  const handlePrevStep = () => {
+    setValidationAlert('');
+    syncCurrentDraft('EN_PROCESO');
+    setCurrentStep((prev) => Math.max(1, prev - 1));
   };
 
   const handlePauseReport = () => {
     if (!currentRecord) return;
-    const allDefects = [...selectedDefects];
-    if (customDefect.trim()) allDefects.push(customDefect.trim().toUpperCase());
-    const allSolutions = [...selectedSolutions];
-    if (customSolution.trim()) allSolutions.push(customSolution.trim().toUpperCase());
-
-    const paused: MaintenanceRecord = {
-      ...currentRecord,
-      operator: operator.trim().toUpperCase(),
-      shift,
-      date,
-      technician,
-      machine,
-      reference,
-      failureTime,
-      technicianArrivalTime,
-      arrivalTimeMin,
-      defects: allDefects,
-      defect: allDefects.join(', '),
-      solutions: allSolutions,
-      solution: allSolutions.join(', '),
-      closingTime,
-      repairTimeMin,
-      totalDowntimeMin,
-      solvingTechnician,
-      status: 'PAUSADO'
-    };
-
-    RecordService.saveMaintenanceRecord(paused).catch((err) => {
-      console.error('Error saving paused report to Firestore:', err);
-    });
+    syncCurrentDraft('PAUSADO');
     setIsFormOpen(false);
     setCurrentRecord(null);
   };
 
   const handleFinalizeReport = () => {
-    if (!currentRecord) return;
-
-    if (!operator.trim()) {
-      setValidationAlert('Por favor ingrese el nombre del operario.');
-      return;
-    }
-    if (!technician) {
-      setValidationAlert('Por favor seleccione el técnico responsable.');
-      return;
-    }
-    if (!machine) {
-      setValidationAlert('Por favor seleccione la máquina.');
-      return;
-    }
-    if (!failureTime) {
-      setValidationAlert('Por favor especifique la hora de inicio de la falla.');
-      return;
-    }
-    if (!technicianArrivalTime) {
-      setValidationAlert('Por favor especifique la hora de llegada del técnico.');
-      return;
-    }
-    const allDefects = [...selectedDefects];
-    if (customDefect.trim()) allDefects.push(customDefect.trim().toUpperCase());
-    if (allDefects.length === 0) {
-      setValidationAlert('Por favor seleccione o describa al menos un defecto detectado.');
-      return;
-    }
-    const allSolutions = [...selectedSolutions];
-    if (customSolution.trim()) allSolutions.push(customSolution.trim().toUpperCase());
-    if (allSolutions.length === 0) {
-      setValidationAlert('Por favor seleccione o describa al menos una solución aplicada.');
-      return;
-    }
-    if (!closingTime) {
-      setValidationAlert('Por favor especifique la hora de solución / cierre.');
-      return;
-    }
-    if (!solvingTechnician) {
-      setValidationAlert('Por favor seleccione el técnico que solucionó la falla.');
-      return;
-    }
-
     setValidationAlert('');
+    const finalDef = getEffectiveDefect();
+    const finalSol = getEffectiveSolution();
+    const defsList = getEffectiveDefectsList();
+    const solsList = getEffectiveSolutionsList();
+
+    // Validación de campos vacíos en el paso final
+    if (!machine || !failureTime || !technicianArrivalTime || defsList.length === 0 || solsList.length === 0 || !closingTime || !solvingTechnician) {
+      setValidationAlert('Existen campos sin diligenciar. Por favor complete todos los pasos antes de finalizar.');
+      return;
+    }
+
+    // Validación de coherencia de horas
+    if (compareTimes(technicianArrivalTime, failureTime) < 0) {
+      setValidationAlert(`⚠️ La hora de llegada del mecánico (${technicianArrivalTime}) no puede ser menor que la hora de parada (${failureTime}).`);
+      return;
+    }
+
+    if (compareTimes(closingTime, failureTime) < 0) {
+      setValidationAlert(`⚠️ La hora de cierre (${closingTime}) no puede ser menor que la hora de parada (${failureTime}).`);
+      return;
+    }
+
+    if (compareTimes(closingTime, technicianArrivalTime) < 0) {
+      setValidationAlert(`⚠️ La hora de cierre (${closingTime}) no puede ser menor que la hora de llegada del mecánico (${technicianArrivalTime}).`);
+      return;
+    }
+
+    if (!currentRecord) return;
+    const currentMachineStation = MASTER_DATA.getStationForMachine(machine) || userStation || 'Estación 51';
 
     const finalized: MaintenanceRecord = {
       ...currentRecord,
-      operator: operator.trim().toUpperCase(),
-      shift,
-      date,
-      technician,
+      station: currentMachineStation,
       machine,
-      reference,
       failureTime,
       technicianArrivalTime,
       arrivalTimeMin,
-      defects: allDefects,
-      defect: allDefects.join(', '),
-      solutions: allSolutions,
-      solution: allSolutions.join(', '),
+      defect: finalDef,
+      defects: defsList,
+      solution: finalSol,
+      solutions: solsList,
       closingTime,
       repairTimeMin,
       totalDowntimeMin,
       solvingTechnician,
+      technician: solvingTechnician,
+      effectiveSolution,
       status: 'FINALIZADO'
     };
 
     RecordService.saveMaintenanceRecord(finalized).catch((err) => {
       console.error('Error saving finalized report to Firestore:', err);
     });
+
     setIsFormOpen(false);
     setCurrentRecord(null);
   };
 
-  const handleContinueOrEditReport = (rec: MaintenanceRecord) => {
+  const handleResumeReport = (rec: MaintenanceRecord) => {
     setCurrentRecord(rec);
     setIsFormOpen(true);
+    setCurrentStep(1);
     setValidationAlert('');
 
-    setOperator(rec.operator || '');
-    setShift(rec.shift || MASTER_DATA.shifts[0]);
-    setDate(rec.date || new Date().toISOString().split('T')[0]);
-    setTechnician(rec.technician || '');
-    setMachine(rec.machine || '');
-    setReference(rec.reference || '');
-
-    setFailureTime(rec.failureTime || '');
+    setMachine(rec.machine || availableMachines[0] || MASTER_DATA.machines[0]);
+    setFailureTime(rec.failureTime || getNowTimeString());
     setTechnicianArrivalTime(rec.technicianArrivalTime || '');
-    setArrivalTimeMin(rec.arrivalTimeMin);
 
-    // Defectos
-    const defArray = rec.defects || (rec.defect ? rec.defect.split(',').map((s) => s.trim()) : []);
-    const standardDefects = defArray.filter((d) => MASTER_DATA.defects.includes(d));
-    const extraDefects = defArray.filter((d) => !MASTER_DATA.defects.includes(d));
-    setSelectedDefects(standardDefects);
-    if (extraDefects.length > 0) {
-      setCustomDefect(extraDefects.join(', '));
-      setShowCustomDefectInput(true);
+    // Cargar defectos (array o cadena separada por comas)
+    if (rec.defects && rec.defects.length > 0) {
+      const known = rec.defects.filter((d) => MASTER_DATA.defects.includes(d));
+      const custom = rec.defects.filter((d) => !MASTER_DATA.defects.includes(d)).join(', ');
+      setSelectedDefects(known);
+      setCustomDefect(custom);
+    } else if (rec.defect) {
+      const parts = rec.defect.split(',').map((s) => s.trim());
+      const known = parts.filter((d) => MASTER_DATA.defects.includes(d));
+      const custom = parts.filter((d) => !MASTER_DATA.defects.includes(d)).join(', ');
+      setSelectedDefects(known);
+      setCustomDefect(custom);
     } else {
+      setSelectedDefects([]);
       setCustomDefect('');
-      setShowCustomDefectInput(false);
     }
 
-    // Soluciones
-    const solArray = rec.solutions || (rec.solution ? rec.solution.split(',').map((s) => s.trim()) : []);
-    const standardSolutions = solArray.filter((s) => MASTER_DATA.solutions.includes(s));
-    const extraSolutions = solArray.filter((s) => !MASTER_DATA.solutions.includes(s));
-    setSelectedSolutions(standardSolutions);
-    if (extraSolutions.length > 0) {
-      setCustomSolution(extraSolutions.join(', '));
-      setShowCustomSolutionInput(true);
+    // Cargar soluciones (array o cadena separada por comas)
+    if (rec.solutions && rec.solutions.length > 0) {
+      const known = rec.solutions.filter((s) => MASTER_DATA.solutions.includes(s));
+      const custom = rec.solutions.filter((s) => !MASTER_DATA.solutions.includes(s)).join(', ');
+      setSelectedSolutions(known);
+      setCustomSolution(custom);
+    } else if (rec.solution) {
+      const parts = rec.solution.split(',').map((s) => s.trim());
+      const known = parts.filter((s) => MASTER_DATA.solutions.includes(s));
+      const custom = parts.filter((s) => !MASTER_DATA.solutions.includes(s)).join(', ');
+      setSelectedSolutions(known);
+      setCustomSolution(custom);
     } else {
+      setSelectedSolutions([]);
       setCustomSolution('');
-      setShowCustomSolutionInput(false);
     }
 
     setClosingTime(rec.closingTime || '');
-    setRepairTimeMin(rec.repairTimeMin);
-    setTotalDowntimeMin(rec.totalDowntimeMin);
-    setSolvingTechnician(rec.solvingTechnician || '');
-
-    // Cambiar a la pestaña de ingresar datos para editar
-    setActiveTab('INGRESAR');
+    setSolvingTechnician(rec.solvingTechnician || rec.technician || MASTER_DATA.technicians[0]);
+    setEffectiveSolution(rec.effectiveSolution || 'Sí');
   };
 
   const handleDeleteReport = async (id: string) => {
@@ -401,784 +446,781 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     }
   };
 
-  const filteredRecords = records.filter((r) => {
-    const s = filterSearch.toLowerCase();
-    const matchSearch =
-      !s ||
-      r.reportNumber.toLowerCase().includes(s) ||
-      (r.operator && r.operator.toLowerCase().includes(s)) ||
-      (r.machine && r.machine.toLowerCase().includes(s));
-    const matchMachine = !filterMachine || r.machine === filterMachine;
-    const matchTech = !filterTechnician || r.technician === filterTechnician;
-    const matchStatus = !filterStatus || r.status === filterStatus;
-    const matchDate = !filterDate || r.date === filterDate;
-    return matchSearch && matchMachine && matchTech && matchStatus && matchDate;
+  // CONTROL DE ROLES (RBAC) PARA EL PANEL EN VIVO:
+  // Usuario corriente: solo registros ingresados por él mismo durante su turno
+  // Administrador: ve toda la información en tiempo real de todos los usuarios
+  const roleFilteredRecords = records.filter((r) => {
+    if (session?.role === 'Administrador') return true;
+    const curName = session?.fullName?.trim().toUpperCase();
+    const curUser = session?.user?.trim().toUpperCase();
+    const recOperator = r.operator?.trim().toUpperCase();
+    return recOperator === curName || recOperator === curUser;
   });
 
-  // Metrics for Dashboard
-  const finalizedRecords = records.filter((r) => r.status === 'FINALIZADO');
-  const inProcessCount = records.filter((r) => r.status === 'EN_PROCESO').length;
-  const pausedCount = records.filter((r) => r.status === 'PAUSADO').length;
-
-  const avgArrival = finalizedRecords.length
-    ? Math.round(
-        finalizedRecords.reduce((acc, r) => acc + (r.arrivalTimeMin || 0), 0) /
-          finalizedRecords.length
-      )
-    : 0;
-
-  const avgRepair = finalizedRecords.length
-    ? Math.round(
-        finalizedRecords.reduce((acc, r) => acc + (r.repairTimeMin || 0), 0) /
-          finalizedRecords.length
-      )
-    : 0;
-
-  const totalDowntime = records.reduce(
-    (acc, r) => acc + (r.totalDowntimeMin || 0),
-    0
-  );
-
-  // Machine Downtime Distribution
-  const machineDowntimeMap: { [key: string]: number } = {};
-  records.forEach((r) => {
-    if (r.machine) {
-      machineDowntimeMap[r.machine] =
-        (machineDowntimeMap[r.machine] || 0) + (r.totalDowntimeMin || 1);
+  // FILTROS GLOBALES: Por Fecha y Por Estación
+  const liveTableRecords = roleFilteredRecords.filter((r) => {
+    if (filterDate && r.date !== filterDate) return false;
+    if (filterStation) {
+      const recStation = r.station || MASTER_DATA.getStationForMachine(r.machine || '') || '';
+      if (recStation !== filterStation) return false;
     }
+    return true;
   });
-  const topMachines = Object.entries(machineDowntimeMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
-  const maxMachineDowntime = Math.max(...topMachines.map((m) => m[1]), 1);
 
-  // Defects Frequency
-  const defectCountMap: { [key: string]: number } = {};
-  records.forEach((r) => {
-    const list = r.defects || (r.defect ? [r.defect] : []);
-    list.forEach((d) => {
-      defectCountMap[d] = (defectCountMap[d] || 0) + 1;
-    });
-  });
-  const topDefects = Object.entries(defectCountMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
-  const maxDefectCount = Math.max(...topDefects.map((d) => d[1]), 1);
+  // Reportes pausados del usuario actual
+  const userPausedReports = roleFilteredRecords.filter((r) => r.status === 'PAUSADO');
+
+  // Si el usuario no ha iniciado turno, mostrar pantalla de bloqueo en Mantenimiento
+  if (!activeTurn) {
+    return (
+      <section className="max-w-2xl w-full mx-auto bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center space-y-4 my-auto">
+        <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto text-amber-600 border border-amber-200">
+          <Lock className="w-6 h-6" />
+        </div>
+        <div>
+          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">
+            MÓDULO DE MANTENIMIENTO BLOQUEADO
+          </h2>
+          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+            Debe registrar e iniciar su turno de producción en la pantalla de inicio antes de ingresar reportes de mantenimiento.
+          </p>
+        </div>
+        <div className="pt-2 flex justify-center">
+          <button
+            onClick={onOpenTurnModal}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs uppercase shadow-md transition flex items-center gap-2 cursor-pointer"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            Iniciar Registro de Turno
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   return (
-    <section id="viewMaintenance" className="space-y-6 max-w-6xl mx-auto w-full">
-      {/* PESTAÑAS NAVEGACIÓN INTERNA MANTENIMIENTO */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-1.5 shadow-sm flex flex-wrap gap-1">
-        <button
-          id="tabBtnMaintIngresar"
-          onClick={() => setActiveTab('INGRESAR')}
-          className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold uppercase transition flex items-center justify-center gap-2 ${
-            activeTab === 'INGRESAR'
-              ? 'bg-maint-600 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          Ingresar Datos
-        </button>
-        <button
-          id="tabBtnMaintLive"
-          onClick={() => setActiveTab('LIVE')}
-          className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold uppercase transition flex items-center justify-center gap-2 ${
-            activeTab === 'LIVE'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-          Panel en Vivo
-        </button>
-        <button
-          id="tabBtnMaintDash"
-          onClick={() => setActiveTab('DASHBOARD')}
-          className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold uppercase transition flex items-center justify-center gap-2 ${
-            activeTab === 'DASHBOARD'
-              ? 'bg-maint-600 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <BarChart3 className="w-4 h-4" />
-          Dashboard
-        </button>
+    <section id="viewMaintenance" className="w-full space-y-4 animate-in fade-in">
+      {/* HEADER DE MANTENIMIENTO & TABS */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center space-x-3">
+          <div className="p-2.5 bg-maint-600 text-white rounded-xl shadow-md">
+            <Wrench className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-black text-slate-800 uppercase tracking-tight">
+              REGISTRO DE MANTENIMIENTO
+            </h2>
+            <p className="text-[11px] text-slate-500">
+              Estación activa: <strong className="text-maint-700 font-bold">{userStation}</strong> | Operario: {session?.fullName}
+            </p>
+          </div>
+        </div>
+
+        {/* PESTAÑAS DE NAVEGACIÓN */}
+        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold w-full sm:w-auto">
+          <button
+            id="tab-maint-ingresar"
+            onClick={() => setActiveTab('INGRESAR')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              activeTab === 'INGRESAR'
+                ? 'bg-maint-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Ingresar Datos
+          </button>
+          <button
+            id="tab-maint-live"
+            onClick={() => setActiveTab('LIVE')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg transition flex items-center justify-center gap-1.5 ${
+              activeTab === 'LIVE'
+                ? 'bg-maint-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            Panel en Vivo
+            <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full">
+              {liveTableRecords.length}
+            </span>
+          </button>
+          {session?.role === 'Administrador' && (
+            <button
+              id="tab-maint-resumen"
+              onClick={() => setActiveTab('RESUMEN')}
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg transition flex items-center justify-center gap-1.5 ${
+                activeTab === 'RESUMEN' || activeTab === 'DASHBOARD'
+                  ? 'bg-maint-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Resumen
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* CONTENIDO PESTAÑA 1: INGRESAR DATOS (FORMULARIO DIRECTO Y UNIFICADO) */}
-      {activeTab === 'INGRESAR' && (
-        <div id="maintTabIngresar" className="space-y-6">
-          {/* HEADER MÓDULO */}
-          <div className="flex flex-wrap justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm gap-3">
-            <div>
-              <h2 className="text-base font-black text-slate-900 uppercase">
-                REGISTRO DE MANTENIMIENTO CORRECTIVO
-              </h2>
-              <p className="text-xs text-slate-500">
-                Formulario directo en una sola interfaz con selección múltiple y actualización en vivo
-              </p>
-            </div>
-            <button
-              id="btnNewMaint"
-              onClick={handleStartNewReport}
-              className="bg-maint-600 hover:bg-maint-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-md transition flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              Nuevo Reporte
-            </button>
-          </div>
+      {/* AUTO-SAVE BADGE */}
+      {showAutoSave && (
+        <div className="fixed bottom-4 right-4 bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 z-50 animate-in fade-in">
+          <Save className="w-3.5 h-3.5" /> Sincronizado en tiempo real
+        </div>
+      )}
 
-          {/* FORMULARIO DIRECTO UNIFICADO (SIN ETAPAS POR PASOS SEPARADOS) */}
-          {isFormOpen && currentRecord ? (
-            <div
-              id="maintFormContainer"
-              className="bg-white p-6 rounded-2xl border-2 border-maint-600 shadow-xl space-y-6 animate-in fade-in"
-            >
-              {/* CABECERA FORMULARIO */}
-              <div className="flex flex-wrap justify-between items-center border-b border-slate-100 pb-3 gap-2">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-black text-white bg-maint-600 px-3 py-1 rounded-lg uppercase">
-                    {currentRecord.reportNumber}
-                  </span>
-                  <span className="text-xs text-slate-500 font-bold">
-                    Estado: <strong className="text-blue-600 uppercase">{currentRecord.status}</strong>
-                  </span>
-                </div>
-                <div className="flex items-center space-x-3">
-                  {showAutoSave && (
-                    <span
-                      id="autoSaveIndicator"
-                      className="text-xs font-bold text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200"
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                      Sincronizado en Vivo
-                    </span>
-                  )}
-                  <button
-                    id="btn-pause-maint-form"
-                    type="button"
-                    onClick={handlePauseReport}
-                    className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-black px-3.5 py-1.5 rounded-xl text-xs shadow flex items-center gap-1 transition"
-                  >
-                    <Pause className="w-3.5 h-3.5" />
-                    PAUSAR REPORTE
-                  </button>
-                </div>
+      {/* TAB 1: INGRESAR DATOS (FLUJO PASO A PASO / WIZARD) */}
+      {activeTab === 'INGRESAR' && (
+        <div className="space-y-4">
+          {!isFormOpen ? (
+            /* VISTA INICIAL: SOLO TÍTULO "REGISTRO DE MANTENIMIENTO" Y BOTÓN "NUEVO REPORTE" */
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center space-y-6 max-w-xl mx-auto">
+              <div className="w-14 h-14 bg-maint-50 text-maint-600 rounded-2xl flex items-center justify-center mx-auto border border-maint-200 shadow-sm">
+                <Wrench className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+                  REGISTRO DE MANTENIMIENTO
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Estación asignada: <strong className="text-slate-800">{userStation}</strong>
+                </p>
               </div>
 
+              <button
+                id="btn-nuevo-reporte-maint"
+                onClick={handleStartNewReport}
+                className="w-full bg-maint-600 hover:bg-maint-700 text-white font-black py-3.5 px-6 rounded-xl text-xs uppercase shadow-md hover:shadow-maint-600/30 transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                NUEVO REPORTE
+              </button>
+
+              {/* SECCIÓN DE REPORTES PAUSADOS */}
+              <div className="border-t border-slate-100 pt-5 text-left space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-2">
+                  <Pause className="w-3.5 h-3.5 text-amber-500" />
+                  Reportes Pausados / En Espera
+                </h4>
+
+                {userPausedReports.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic py-2 text-center bg-slate-50 rounded-xl p-3 border border-slate-100">
+                    No hay ningún reporte de mantenimiento abierto actualmente.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {userPausedReports.map((p) => (
+                      <div
+                        key={p.id}
+                        className="bg-amber-50/60 border border-amber-200 rounded-xl p-3 flex justify-between items-center text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-amber-900">{p.reportNumber}</span>
+                            <span className="bg-amber-200 text-amber-900 font-bold px-1.5 py-0.2 rounded text-[10px]">
+                              Máq. {p.machine}
+                            </span>
+                            <span className="text-slate-400">|</span>
+                            <span className="text-slate-600 text-[11px]">{p.station}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Parada: <strong>{p.failureTime}</strong> | Falla: {p.defect || 'Por definir'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleResumeReport(p)}
+                          className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 shadow-sm"
+                        >
+                          <Pencil className="w-3.5 h-3.5" /> Reanudar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* FORMULARIO PASO A PASO (WIZARD 1 A 7) */
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm max-w-xl mx-auto overflow-hidden">
+              {/* ENCABEZADO DEL WIZARD CON PAUSAR Y ESTADO EN VIVO */}
+              <div className="bg-slate-900 p-4 text-white flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <span className="bg-maint-600 text-white text-xs font-black px-2 py-0.5 rounded-md">
+                    PASO {currentStep} DE 7
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-xs uppercase tracking-wide">
+                      {currentStep === 1 && '1. Selección de Máquina'}
+                      {currentStep === 2 && '2. Hora de Parada'}
+                      {currentStep === 3 && '3. Defecto Detectado'}
+                      {currentStep === 4 && '4. Hora de Llegada del Mecánico'}
+                      {currentStep === 5 && '5. Solución Aplicada'}
+                      {currentStep === 6 && '6. Hora Final de Solución'}
+                      {currentStep === 7 && '7. Mecánico y Efectividad'}
+                    </h3>
+                    <p className="text-[10px] text-slate-400">
+                      Reporte: {currentRecord?.reportNumber} | {userStation}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handlePauseReport}
+                  className="bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white border border-amber-500/40 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                  title="Pausar reporte para completarlo más tarde"
+                >
+                  <Pause className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Pausar</span>
+                </button>
+              </div>
+
+              {/* PROGRESS BAR */}
+              <div className="w-full bg-slate-100 h-1.5">
+                <div
+                  className="bg-maint-600 h-1.5 transition-all duration-300"
+                  style={{ width: `${(currentStep / 7) * 100}%` }}
+                ></div>
+              </div>
+
+              {/* MENSAJE DE VALIDACIÓN */}
               {validationAlert && (
                 <div
-                  id="maintFormValidationAlert"
-                  className="p-3 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-2"
+                  id="maintValidationAlert"
+                  className="m-4 p-3 rounded-xl text-xs font-bold bg-rose-50 text-rose-600 border border-rose-200 flex items-center gap-2 animate-in fade-in"
                 >
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <AlertCircle className="w-4 h-4 shrink-0" />
                   {validationAlert}
                 </div>
               )}
 
-              {/* SECCIÓN 1: DATOS GENERALES */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-maint-600"></span>
-                  1. Información General del Turno y Máquina
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Nombre Operario *
-                    </label>
-                    <input
-                      type="text"
-                      id="inpOperator"
-                      value={operator}
-                      onChange={(e) => {
-                        const val = e.target.value.toUpperCase();
-                        setOperator(val);
-                        syncFormStateToRecord({ operator: val });
-                      }}
-                      placeholder="Nombre de operario"
-                      className="w-full border border-slate-300 p-2.5 rounded-xl text-xs uppercase font-semibold focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                    />
+              {/* CUERPO DEL PASO ACTUAL */}
+              <div className="p-6 space-y-4 text-left">
+                {/* PASO 1: MÁQUINA COMO GRUPO DE CHIPS / ETIQUETAS (SOLO EL NÚMERO) */}
+                {currentStep === 1 && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <label className="block text-xs font-bold text-slate-700 uppercase">
+                        Máquina ({userStation}) *
+                      </label>
+                      {machine && (
+                        <span className="text-[11px] font-bold text-maint-700 bg-maint-50 px-2 py-0.5 rounded border border-maint-200">
+                          Seleccionada: {machine}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2.5 pt-1">
+                      {availableMachines.map((m) => {
+                        const isSelected = machine === m;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            id={`chip-machine-${m}`}
+                            onClick={() => {
+                              setMachine(m);
+                              setValidationAlert('');
+                            }}
+                            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition cursor-pointer border ${
+                              isSelected
+                                ? 'bg-maint-600 text-white border-maint-600 shadow-md ring-2 ring-maint-400/40 scale-105'
+                                : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800 hover:border-slate-300'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-slate-500 pt-1">
+                      Toque el número de la máquina donde se presentó la novedad.
+                    </p>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Turno *
-                    </label>
-                    <select
-                      id="inpShift"
-                      value={shift}
-                      onChange={(e) => {
-                        setShift(e.target.value);
-                        syncFormStateToRecord({ shift: e.target.value });
-                      }}
-                      className="w-full border border-slate-300 p-2.5 rounded-xl text-xs bg-white font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                    >
-                      {MASTER_DATA.shifts.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Día / Fecha *
-                    </label>
-                    <input
-                      type="date"
-                      id="inpDate"
-                      value={date}
-                      onChange={(e) => {
-                        setDate(e.target.value);
-                        syncFormStateToRecord({ date: e.target.value });
-                      }}
-                      className="w-full border border-slate-300 p-2.5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Técnico Responsable *
-                    </label>
-                    <select
-                      id="inpTechnician"
-                      value={technician}
-                      onChange={(e) => {
-                        setTechnician(e.target.value);
-                        syncFormStateToRecord({ technician: e.target.value });
-                      }}
-                      className="w-full border border-slate-300 p-2.5 rounded-xl text-xs bg-white font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                    >
-                      <option value="">-- Seleccionar Técnico --</option>
-                      {MASTER_DATA.technicians.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Máquina (Lista Oficial) *
-                    </label>
-                    <select
-                      id="inpMachine"
-                      value={machine}
-                      onChange={(e) => {
-                        setMachine(e.target.value);
-                        syncFormStateToRecord({ machine: e.target.value });
-                      }}
-                      className="w-full border border-slate-300 p-2.5 rounded-xl text-xs bg-white font-bold text-maint-700 focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                    >
-                      <option value="">-- Seleccionar Máquina --</option>
-                      {MASTER_DATA.machines.map((m) => (
-                        <option key={m} value={m}>
-                          Máquina {m}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Referencia
-                    </label>
-                    <select
-                      id="inpReference"
-                      value={reference}
-                      onChange={(e) => {
-                        setReference(e.target.value);
-                        syncFormStateToRecord({ reference: e.target.value });
-                      }}
-                      className="w-full border border-slate-300 p-2.5 rounded-xl text-xs bg-white font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                    >
-                      <option value="">-- Seleccionar Referencia --</option>
-                      {MASTER_DATA.references.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
+                )}
 
-              {/* SECCIÓN 2: TIEMPO DE FALLA Y LLEGADA DE TÉCNICO */}
-              <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-maint-600" />
-                  2. Tiempos de Respuesta
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Hora Inicio de Falla *
+                {/* PASO 2: HORA DE PARADA */}
+                {currentStep === 2 && (
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-slate-700 uppercase">
+                      Hora de Parada *
                     </label>
                     <div className="flex gap-2">
                       <input
                         type="time"
-                        id="inpHoraFallo"
+                        id="maintInpFailureTime"
                         value={failureTime}
                         onChange={(e) => {
                           setFailureTime(e.target.value);
-                          syncFormStateToRecord({ failureTime: e.target.value });
+                          setValidationAlert('');
                         }}
-                        className="w-full border border-slate-300 p-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none"
+                        required
+                        className="w-full border border-slate-300 p-3 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-maint-600 focus:outline-none"
                       />
                       <button
                         type="button"
                         onClick={() => {
-                          const t = getNowTimeString();
-                          setFailureTime(t);
-                          syncFormStateToRecord({ failureTime: t });
+                          setFailureTime(getNowTimeString());
+                          setValidationAlert('');
                         }}
-                        className="bg-white border border-slate-300 text-maint-700 px-3 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-slate-100 whitespace-nowrap"
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs uppercase shrink-0 transition"
                       >
                         Hora Actual
                       </button>
                     </div>
+                    <p className="text-[11px] text-slate-500">
+                      Momento exacto en que la máquina detuvo su operación por falla o atasco.
+                    </p>
                   </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Hora Llegada de Técnico *
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="time"
-                        id="inpHoraLlegada"
-                        value={technicianArrivalTime}
-                        onChange={(e) => {
-                          setTechnicianArrivalTime(e.target.value);
-                          syncFormStateToRecord({ technicianArrivalTime: e.target.value });
-                        }}
-                        className="w-full border border-slate-300 p-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const t = getNowTimeString();
-                          setTechnicianArrivalTime(t);
-                          syncFormStateToRecord({ technicianArrivalTime: t });
-                        }}
-                        className="bg-white border border-slate-300 text-maint-700 px-3 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-slate-100 whitespace-nowrap"
-                      >
-                        Hora Actual
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {arrivalTimeMin !== undefined && (
-                  <p id="lblTiempoLlegada" className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 inline-block">
-                    ⏱ Tiempo de respuesta técnico: <strong>{arrivalTimeMin} minutos</strong>
-                  </p>
                 )}
-              </div>
 
-              {/* SECCIÓN 3: DEFECTOS DETECTADOS (SELECCIÓN MÚLTIPLE) */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-maint-600"></span>
-                    3. Defectos Detectados (Selección Múltiple) *
-                  </h4>
-                  <span className="text-[11px] text-maint-700 font-bold">
-                    {selectedDefects.length + (customDefect ? 1 : 0)} seleccionados
-                  </span>
-                </div>
+                {/* PASO 3: DEFECTO DETECTADO (GRUPO DE CHIPS / ETIQUETAS CON SELECCIÓN MÚLTIPLE) */}
+                {currentStep === 3 && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <label className="block text-xs font-bold text-slate-700 uppercase">
+                        Defecto Detectado (Selección Múltiple) *
+                      </label>
+                      <span className="text-[11px] font-bold text-maint-700 bg-maint-50 px-2 py-0.5 rounded border border-maint-200">
+                        {selectedDefects.length} seleccionados
+                      </span>
+                    </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {MASTER_DATA.defects.map((def) => {
-                    const isSelected = selectedDefects.includes(def);
-                    return (
-                      <button
-                        key={def}
-                        type="button"
-                        onClick={() => toggleDefectSelection(def)}
-                        className={`p-2 rounded-xl text-xs font-semibold text-left transition flex items-center justify-between border ${
-                          isSelected
-                            ? 'bg-maint-50 text-maint-900 border-maint-500 font-bold ring-1 ring-maint-400'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-maint-300 hover:bg-slate-50'
-                        }`}
-                      >
-                        <span className="truncate pr-1">{def}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-maint-700 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
+                    {/* Filtro rápido para defectos */}
+                    <input
+                      type="text"
+                      value={defectFilter}
+                      onChange={(e) => setDefectFilter(e.target.value)}
+                      placeholder="🔍 Filtrar defectos (ej: V1, BORDE, PUNTA...)"
+                      className="w-full border border-slate-200 p-2 rounded-lg text-xs bg-slate-50 focus:bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none"
+                    />
 
-                <div className="pt-1">
-                  {!showCustomDefectInput ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomDefectInput(true)}
-                      className="text-xs text-maint-600 hover:text-maint-800 font-bold flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" /> Añadir otro defecto personalizado
-                    </button>
-                  ) : (
-                    <div className="flex gap-2 items-center">
+                    {/* Contenedor de Chips de Defectos */}
+                    <div className="flex flex-wrap gap-2 max-h-56 overflow-y-auto p-1 border border-slate-100 rounded-xl bg-slate-50/50">
+                      {MASTER_DATA.defects
+                        .filter((d) =>
+                          d.toLowerCase().includes(defectFilter.toLowerCase())
+                        )
+                        .map((d) => {
+                          const isSelected = selectedDefects.includes(d);
+                          return (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => {
+                                toggleDefect(d);
+                                setValidationAlert('');
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs text-left font-bold transition cursor-pointer border ${
+                                isSelected
+                                  ? 'bg-maint-600 text-white border-maint-600 shadow-xs'
+                                  : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {isSelected ? '✓ ' : '+ '}{d}
+                            </button>
+                          );
+                        })}
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                        O escribir defecto adicional (si no está en la lista):
+                      </label>
                       <input
                         type="text"
+                        id="maintInpCustomDefect"
                         value={customDefect}
                         onChange={(e) => {
                           setCustomDefect(e.target.value.toUpperCase());
-                          syncFormStateToRecord();
+                          setValidationAlert('');
                         }}
-                        placeholder="Escriba defecto personalizado..."
-                        className="w-full max-w-md border border-slate-300 p-2 rounded-lg text-xs uppercase font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none"
+                        placeholder="Escriba aquí si desea especificar otro defecto..."
+                        className="w-full border border-slate-300 p-2.5 rounded-lg text-xs uppercase font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none"
                       />
                     </div>
-                  )}
-                </div>
-              </div>
+                  </div>
+                )}
 
-              {/* SECCIÓN 4: SOLUCIONES APLICADAS (SELECCIÓN MÚLTIPLE) */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-maint-600"></span>
-                    4. Soluciones Aplicadas (Selección Múltiple) *
-                  </h4>
-                  <span className="text-[11px] text-maint-700 font-bold">
-                    {selectedSolutions.length + (customSolution ? 1 : 0)} seleccionadas
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {MASTER_DATA.solutions.map((sol) => {
-                    const isSelected = selectedSolutions.includes(sol);
-                    return (
-                      <button
-                        key={sol}
-                        type="button"
-                        onClick={() => toggleSolutionSelection(sol)}
-                        className={`p-2 rounded-xl text-xs font-semibold text-left transition flex items-center justify-between border ${
-                          isSelected
-                            ? 'bg-emerald-50 text-emerald-900 border-emerald-500 font-bold ring-1 ring-emerald-400'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-300 hover:bg-slate-50'
-                        }`}
-                      >
-                        <span className="truncate pr-1">{sol}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="pt-1">
-                  {!showCustomSolutionInput ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomSolutionInput(true)}
-                      className="text-xs text-emerald-600 hover:text-emerald-800 font-bold flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" /> Añadir otra solución personalizada
-                    </button>
-                  ) : (
-                    <div className="flex gap-2 items-center">
-                      <input
-                        type="text"
-                        value={customSolution}
-                        onChange={(e) => {
-                          setCustomSolution(e.target.value.toUpperCase());
-                          syncFormStateToRecord();
-                        }}
-                        placeholder="Escriba solución personalizada..."
-                        className="w-full max-w-md border border-slate-300 p-2 rounded-lg text-xs uppercase font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* SECCIÓN 5: CIERRE Y TÉCNICO RESOLUTOR */}
-              <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-maint-600" />
-                  5. Hora de Solución / Cierre y Técnico Responsable
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Hora de Cierre / Solución *
+                {/* PASO 4: HORA DE LLEGADA DEL MECÁNICO (LIMPIO, SIN CUADROS DE ESPERA) */}
+                {currentStep === 4 && (
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-slate-700 uppercase">
+                      Hora de Llegada del Mecánico *
                     </label>
                     <div className="flex gap-2">
                       <input
                         type="time"
-                        id="inpHoraCierre"
-                        value={closingTime}
+                        id="maintInpArrivalTime"
+                        value={technicianArrivalTime}
                         onChange={(e) => {
-                          setClosingTime(e.target.value);
-                          syncFormStateToRecord({ closingTime: e.target.value });
+                          setTechnicianArrivalTime(e.target.value);
+                          setValidationAlert('');
                         }}
-                        className="w-full border border-slate-300 p-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none"
+                        required
+                        className="w-full border border-slate-300 p-3 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-maint-600 focus:outline-none"
                       />
                       <button
                         type="button"
                         onClick={() => {
-                          const t = getNowTimeString();
-                          setClosingTime(t);
-                          syncFormStateToRecord({ closingTime: t });
+                          setTechnicianArrivalTime(getNowTimeString());
+                          setValidationAlert('');
                         }}
-                        className="bg-white border border-slate-300 text-maint-700 px-3 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-slate-100 whitespace-nowrap"
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs uppercase shrink-0 transition"
                       >
                         Hora Actual
                       </button>
                     </div>
+                    <p className="text-[11px] text-slate-500">
+                      Momento exacto en que el mecánico o técnico se presentó en la máquina.
+                    </p>
                   </div>
+                )}
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Técnico que Realizó la Solución *
+                {/* PASO 5: SOLUCIÓN APLICADA (GRUPO DE CHIPS / ETIQUETAS CON SELECCIÓN MÚLTIPLE) */}
+                {currentStep === 5 && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <label className="block text-xs font-bold text-slate-700 uppercase">
+                        Solución Aplicada (Selección Múltiple) *
+                      </label>
+                      <span className="text-[11px] font-bold text-maint-700 bg-maint-50 px-2 py-0.5 rounded border border-maint-200">
+                        {selectedSolutions.length} seleccionadas
+                      </span>
+                    </div>
+
+                    {/* Filtro rápido para soluciones */}
+                    <input
+                      type="text"
+                      value={solutionFilter}
+                      onChange={(e) => setSolutionFilter(e.target.value)}
+                      placeholder="🔍 Filtrar soluciones (ej: S1, CUADRE, CAMBIO, LIMPIEZA...)"
+                      className="w-full border border-slate-200 p-2 rounded-lg text-xs bg-slate-50 focus:bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none"
+                    />
+
+                    {/* Contenedor de Chips de Soluciones */}
+                    <div className="flex flex-wrap gap-2 max-h-56 overflow-y-auto p-1 border border-slate-100 rounded-xl bg-slate-50/50">
+                      {MASTER_DATA.solutions
+                        .filter((s) =>
+                          s.toLowerCase().includes(solutionFilter.toLowerCase())
+                        )
+                        .map((s) => {
+                          const isSelected = selectedSolutions.includes(s);
+                          return (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => {
+                                toggleSolution(s);
+                                setValidationAlert('');
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs text-left font-bold transition cursor-pointer border ${
+                                isSelected
+                                  ? 'bg-maint-600 text-white border-maint-600 shadow-xs'
+                                  : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {isSelected ? '✓ ' : '+ '}{s}
+                            </button>
+                          );
+                        })}
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                        O escribir solución adicional (si no está en la lista):
+                      </label>
+                      <input
+                        type="text"
+                        id="maintInpCustomSolution"
+                        value={customSolution}
+                        onChange={(e) => {
+                          setCustomSolution(e.target.value.toUpperCase());
+                          setValidationAlert('');
+                        }}
+                        placeholder="Escriba aquí si desea especificar otra solución..."
+                        className="w-full border border-slate-300 p-2.5 rounded-lg text-xs uppercase font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* PASO 6: HORA FINAL DE SOLUCIÓN / CIERRE (LIMPIO) */}
+                {currentStep === 6 && (
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-slate-700 uppercase">
+                      Hora Final de Solución / Cierre *
                     </label>
-                    <select
-                      id="inpSolvingTechnician"
-                      value={solvingTechnician}
-                      onChange={(e) => {
-                        setSolvingTechnician(e.target.value);
-                        syncFormStateToRecord({ solvingTechnician: e.target.value });
-                      }}
-                      className="w-full border border-slate-300 p-2 rounded-lg text-xs bg-white font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                    >
-                      <option value="">-- Seleccionar Técnico --</option>
-                      {MASTER_DATA.technicians.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex gap-2">
+                      <input
+                        type="time"
+                        id="maintInpClosingTime"
+                        value={closingTime}
+                        onChange={(e) => {
+                          setClosingTime(e.target.value);
+                          setValidationAlert('');
+                        }}
+                        required
+                        className="w-full border border-slate-300 p-3 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-maint-600 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClosingTime(getNowTimeString());
+                          setValidationAlert('');
+                        }}
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs uppercase shrink-0 transition"
+                      >
+                        Hora Actual
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Momento en que la máquina quedó reparada y lista para continuar producción.
+                    </p>
                   </div>
-                </div>
+                )}
 
-                <div className="flex flex-wrap gap-4 text-xs font-bold pt-2">
-                  {repairTimeMin !== undefined && (
-                    <span id="lblTiempoReparacion" className="text-maint-700 bg-maint-50 px-2.5 py-1 rounded border border-maint-100">
-                      🔧 Tiempo de reparación: {repairTimeMin} min
-                    </span>
-                  )}
-                  {totalDowntimeMin !== undefined && (
-                    <span id="lblTiempoTotalParada" className="text-rose-700 bg-rose-50 px-2.5 py-1 rounded border border-rose-100">
-                      🛑 Parada total máquina: {totalDowntimeMin} min
-                    </span>
-                  )}
-                </div>
+                {/* PASO 7: MECÁNICO Y SOLUCIÓN EFECTIVA */}
+                {currentStep === 7 && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        Mecánico Responsable *
+                      </label>
+                      <select
+                        id="maintInpTech"
+                        value={solvingTechnician}
+                        onChange={(e) => setSolvingTechnician(e.target.value)}
+                        required
+                        className="w-full border border-slate-300 p-2.5 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none"
+                      >
+                        {MASTER_DATA.technicians.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
+                        ¿Solución Efectiva? *
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          id="btn-solucion-efectiva-si"
+                          onClick={() => setEffectiveSolution('Sí')}
+                          className={`p-3 rounded-xl border font-black text-xs uppercase flex items-center justify-center gap-2 transition cursor-pointer ${
+                            effectiveSolution === 'Sí'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <CheckCircle2 className="w-4 h-4" /> Sí
+                        </button>
+                        <button
+                          type="button"
+                          id="btn-solucion-efectiva-no"
+                          onClick={() => setEffectiveSolution('No')}
+                          className={`p-3 rounded-xl border font-black text-xs uppercase flex items-center justify-center gap-2 transition cursor-pointer ${
+                            effectiveSolution === 'No'
+                              ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          No
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* BOTONES DE ACCIÓN */}
-              <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-slate-100">
+              {/* BOTONES DE NAVEGACIÓN PASO A PASO (ATRÁS / SIGUIENTE / FINALIZAR) */}
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
                 <button
                   type="button"
-                  onClick={handlePauseReport}
-                  className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-4 py-2.5 rounded-xl text-xs shadow flex items-center gap-1.5 transition"
+                  id="btn-wizard-maint-prev"
+                  onClick={handlePrevStep}
+                  disabled={currentStep === 1}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
                 >
-                  <Pause className="w-4 h-4" />
-                  Pausar Reporte
+                  <ArrowLeft className="w-4 h-4" /> Atrás
                 </button>
-                <button
-                  type="button"
-                  id="btn-finalize-maint-report"
-                  onClick={handleFinalizeReport}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs shadow-md flex items-center gap-2 transition"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  FINALIZAR REPORTE
-                </button>
+
+                {currentStep < 7 ? (
+                  <button
+                    type="button"
+                    id="btn-wizard-maint-next"
+                    onClick={handleNextStep}
+                    className="bg-maint-600 hover:bg-maint-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs uppercase shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    Siguiente <ArrowRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    id="btn-wizard-maint-finish"
+                    onClick={handleFinalizeReport}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-6 py-2.5 rounded-xl text-xs uppercase shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Finalizar Reporte
+                  </button>
+                )}
               </div>
-            </div>
-          ) : (
-            <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-10 text-center space-y-3">
-              <p className="text-sm font-bold text-slate-600">
-                No hay ningún reporte de mantenimiento abierto actualmente.
-              </p>
-              <p className="text-xs text-slate-400">
-                Haga clic en <strong>"Nuevo Reporte"</strong> para registrar una falla o seleccione un reporte en la pestaña <strong>"Panel en Vivo"</strong> para continuar.
-              </p>
-              <button
-                onClick={handleStartNewReport}
-                className="bg-maint-600 hover:bg-maint-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs shadow inline-flex items-center gap-1.5 transition"
-              >
-                <Plus className="w-4 h-4" />
-                Iniciar Formulario de Mantenimiento
-              </button>
             </div>
           )}
         </div>
       )}
 
-      {/* CONTENIDO PESTAÑA 2: PANEL EN VIVO (PANEL CENTRAL DE REGISTROS) */}
+      {/* TAB 2: PANEL EN VIVO (MANTENIMIENTO) */}
       {activeTab === 'LIVE' && (
-        <div id="maintTabLive" className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-4 border-b flex flex-col md:flex-row justify-between items-center gap-3">
+        <div className="space-y-4">
+          {/* FILTROS GLOBALES: SOLO DOS FILTROS PRINCIPALES (POR FECHA Y POR ESTACIÓN) */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full sm:w-auto">
+              {/* FILTRO 1: POR FECHA */}
               <div>
-                <h3 className="font-black text-slate-800 text-sm uppercase flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
-                  PANEL EN VIVO — REGISTROS DE MANTENIMIENTO
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Actualización en tiempo real de fallas, tiempos operativos y soluciones
-                </p>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Filtrar por Fecha
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    id="filterMaintDate"
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                    className="border border-slate-300 p-2 rounded-lg text-xs font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none pl-8"
+                  />
+                  <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                </div>
               </div>
-              <button
-                id="btn-export-excel"
-                onClick={() => RecordService.exportMaintenanceToExcel(records)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow uppercase flex items-center gap-1.5 transition"
-              >
-                <Download className="w-4 h-4" />
-                EXPORTAR A EXCEL
-              </button>
+
+              {/* FILTRO 2: POR ESTACIÓN */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Filtrar por Estación
+                </label>
+                <div className="relative">
+                  <select
+                    id="filterMaintStation"
+                    value={filterStation}
+                    onChange={(e) => setFilterStation(e.target.value)}
+                    className="border border-slate-300 p-2 rounded-lg text-xs font-medium bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none pl-8 min-w-[170px]"
+                  >
+                    <option value="">Todas las Estaciones</option>
+                    {MASTER_DATA.stations.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
+                  <Layers className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                </div>
+              </div>
             </div>
 
-            {/* FILTROS DE BÚSQUEDA */}
-            <div className="p-4 bg-slate-50 border-b grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              <input
-                type="text"
-                id="filterSearch"
-                value={filterSearch}
-                onChange={(e) => setFilterSearch(e.target.value)}
-                placeholder="Buscar reporte, operario..."
-                className="border border-slate-300 p-2 rounded-xl text-xs uppercase bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none"
-              />
-              <select
-                id="filterMachine"
-                value={filterMachine}
-                onChange={(e) => setFilterMachine(e.target.value)}
-                className="border border-slate-300 p-2 rounded-xl text-xs bg-white font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none"
-              >
-                <option value="">Todas las Máquinas</option>
-                {MASTER_DATA.machines.map((m) => (
-                  <option key={m} value={m}>
-                    Máquina {m}
-                  </option>
-                ))}
-              </select>
-              <select
-                id="filterTechnician"
-                value={filterTechnician}
-                onChange={(e) => setFilterTechnician(e.target.value)}
-                className="border border-slate-300 p-2 rounded-xl text-xs bg-white font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none"
-              >
-                <option value="">Todos los Técnicos</option>
-                {MASTER_DATA.technicians.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <select
-                id="filterStatus"
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="border border-slate-300 p-2 rounded-xl text-xs bg-white font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none"
-              >
-                <option value="">Todos los Estados</option>
-                <option value="EN_PROCESO">EN PROCESO</option>
-                <option value="PAUSADO">PAUSADO</option>
-                <option value="FINALIZADO">FINALIZADO</option>
-              </select>
-              <input
-                type="date"
-                id="filterDate"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className="border border-slate-300 p-2 rounded-xl text-xs bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none font-bold"
-              />
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              {(filterDate || filterStation) && (
+                <button
+                  onClick={() => {
+                    setFilterDate('');
+                    setFilterStation('');
+                  }}
+                  className="text-xs text-maint-600 hover:underline font-bold px-2 py-1"
+                >
+                  Limpiar Filtros
+                </button>
+              )}
+              <span className="text-xs bg-slate-100 text-slate-700 font-bold px-3 py-1.5 rounded-full border border-slate-200">
+                {liveTableRecords.length} Registros
+              </span>
             </div>
+          </div>
 
-            {/* TABLA DE REGISTROS EN VIVO */}
+          {/* TABLA EN VIVO */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 font-bold uppercase text-slate-600 border-b">
-                    <th className="p-3">Turno</th>
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-wider font-bold">
+                  <tr>
+                    <th className="p-3">Reporte</th>
                     <th className="p-3">Fecha</th>
+                    <th className="p-3">Estación</th>
                     <th className="p-3">Máquina</th>
-                    <th className="p-3">H. Inicio Falla</th>
-                    <th className="p-3">H. Llegada Técnico</th>
+                    <th className="p-3">Hora Parada</th>
                     <th className="p-3">Defecto</th>
                     <th className="p-3">Solución</th>
-                    <th className="p-3">H. Solución</th>
-                    <th className="p-3">Técnico</th>
+                    <th className="p-3">Mecánico</th>
+                    <th className="p-3">Efectiva</th>
+                    <th className="p-3">T. Muerto</th>
                     <th className="p-3">Estado</th>
-                    <th className="p-3 text-center">Acciones</th>
+                    {session?.role === 'Administrador' && <th className="p-3 text-center">Acciones</th>}
                   </tr>
                 </thead>
-                <tbody id="tblMaintBody" className="divide-y divide-slate-100">
-                  {filteredRecords.length === 0 ? (
+                <tbody className="divide-y divide-slate-100">
+                  {liveTableRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="p-6 text-center text-slate-400">
-                        Sin registros de mantenimiento almacenados.
+                      <td colSpan={session?.role === 'Administrador' ? 12 : 11} className="p-8 text-center text-slate-400">
+                        No hay reportes de mantenimiento para los filtros seleccionados.
                       </td>
                     </tr>
                   ) : (
-                    filteredRecords.map((r) => {
-                      const badgeColor =
-                        r.status === 'FINALIZADO'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : r.status === 'PAUSADO'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-blue-100 text-blue-800';
-
-                      const defectText =
-                        r.defects && r.defects.length > 0
-                          ? r.defects.join(', ')
-                          : r.defect || '-';
-
-                      const solutionText =
-                        r.solutions && r.solutions.length > 0
-                          ? r.solutions.join(', ')
-                          : r.solution || '-';
-
-                      return (
-                        <tr key={r.id} className="hover:bg-slate-50 transition">
-                          <td className="p-3 font-semibold text-slate-700">{r.shift || '-'}</td>
-                          <td className="p-3 font-medium">{r.date}</td>
-                          <td className="p-3 font-bold text-maint-700">{r.machine || '-'}</td>
-                          <td className="p-3">{r.failureTime || '-'}</td>
-                          <td className="p-3">{r.technicianArrivalTime || '-'}</td>
-                          <td className="p-3 uppercase max-w-[150px] truncate" title={defectText}>
-                            {defectText}
-                          </td>
-                          <td className="p-3 uppercase max-w-[150px] truncate" title={solutionText}>
-                            {solutionText}
-                          </td>
-                          <td className="p-3">{r.closingTime || '-'}</td>
-                          <td className="p-3 font-semibold uppercase">{r.solvingTechnician || r.technician || '-'}</td>
-                          <td className="p-3">
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${badgeColor}`}
-                            >
-                              {r.status}
+                    liveTableRecords.map((r) => (
+                      <tr key={r.id} className="hover:bg-slate-50 transition">
+                        <td className="p-3 font-mono font-bold text-slate-900">{r.reportNumber}</td>
+                        <td className="p-3 font-medium text-slate-600">{r.date}</td>
+                        <td className="p-3 font-semibold text-slate-800">
+                          {r.station || MASTER_DATA.getStationForMachine(r.machine || '') || 'Estación'}
+                        </td>
+                        <td className="p-3 font-bold text-maint-700 bg-maint-50/50">Máq. {r.machine}</td>
+                        <td className="p-3 font-mono text-slate-700">{r.failureTime}</td>
+                        <td className="p-3 max-w-[150px] truncate text-slate-700" title={r.defect}>
+                          {r.defect || '--'}
+                        </td>
+                        <td className="p-3 max-w-[150px] truncate text-slate-700" title={r.solution}>
+                          {r.solution || '--'}
+                        </td>
+                        <td className="p-3 font-semibold text-slate-800">{r.solvingTechnician || r.technician || '--'}</td>
+                        <td className="p-3">
+                          {r.effectiveSolution === 'Sí' ? (
+                            <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              Sí
                             </span>
+                          ) : (
+                            <span className="text-rose-700 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                              No
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 font-mono font-bold text-slate-800">
+                          {r.totalDowntimeMin !== undefined ? `${r.totalDowntimeMin} min` : '--'}
+                        </td>
+                        <td className="p-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              r.status === 'FINALIZADO'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : r.status === 'PAUSADO'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}
+                          >
+                            {r.status}
+                          </span>
+                        </td>
+                        {session?.role === 'Administrador' && (
+                          <td className="p-3 text-center">
+                            <button
+                              onClick={() => handleDeleteReport(r.id)}
+                              className="p-1 text-slate-400 hover:text-rose-600 transition"
+                              title="Eliminar reporte (Solo Administrador)"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </td>
-                          <td className="p-3">
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                onClick={() => handleContinueOrEditReport(r)}
-                                className="text-slate-600 hover:text-maint-700 bg-slate-100 hover:bg-maint-50 p-1.5 rounded-lg transition"
-                                title="Editar / Continuar reporte"
-                              >
-                                <Pencil className="w-3.5 h-3.5 text-maint-600" />
-                              </button>
-
-                              {/* RESTRINGIR ELIMINAR A ADMINISTRADORES EXCLUSIVAMENTE */}
-                              {session?.role === 'Administrador' && (
-                                <button
-                                  onClick={() => handleDeleteReport(r.id)}
-                                  className="text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 p-1.5 rounded-lg transition"
-                                  title="Eliminar reporte (Solo Administrador)"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
+                        )}
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
@@ -1187,116 +1229,9 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
         </div>
       )}
 
-      {/* CONTENIDO PESTAÑA 3: DASHBOARD */}
-      {activeTab === 'DASHBOARD' && (
-        <div id="maintTabDash" className="space-y-6">
-          {/* TARJETAS DE MÉTRICAS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-[11px] font-bold uppercase text-slate-500">
-                Total Reportes
-              </span>
-              <p className="text-2xl font-black text-slate-800 mt-1">{records.length}</p>
-              <div className="flex gap-2 text-[10px] font-bold mt-2">
-                <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                  {finalizedRecords.length} Finalizados
-                </span>
-                <span className="text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                  {pausedCount} Pausados
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-[11px] font-bold uppercase text-slate-500">
-                T. Promedio Respuesta
-              </span>
-              <p className="text-2xl font-black text-indigo-600 mt-1">{avgArrival} min</p>
-              <p className="text-[11px] text-slate-400 mt-1">Llegada del técnico a máquina</p>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-[11px] font-bold uppercase text-slate-500">
-                T. Promedio Reparación
-              </span>
-              <p className="text-2xl font-black text-maint-600 mt-1">{avgRepair} min</p>
-              <p className="text-[11px] text-slate-400 mt-1">Tiempo de ejecución de solución</p>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-[11px] font-bold uppercase text-slate-500">
-                Parada Total Acumulada
-              </span>
-              <p className="text-2xl font-black text-rose-600 mt-1">{totalDowntime} min</p>
-              <p className="text-[11px] text-slate-400 mt-1">
-                {(totalDowntime / 60).toFixed(1)} horas sin operar
-              </p>
-            </div>
-          </div>
-
-          {/* DISTRIBUCIONES */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* DEFECTOS MÁS FRECUENTES */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h4 className="font-bold text-xs uppercase text-slate-800 border-b pb-2">
-                Defectos Más Frecuentes
-              </h4>
-              <div className="space-y-3">
-                {topDefects.length === 0 ? (
-                  <p className="text-xs text-slate-400">Sin datos de defectos.</p>
-                ) : (
-                  topDefects.map(([name, count]) => {
-                    const pct = Math.round((count / maxDefectCount) * 100);
-                    return (
-                      <div key={name} className="space-y-1">
-                        <div className="flex justify-between text-xs font-semibold">
-                          <span className="truncate uppercase max-w-[250px]">{name}</span>
-                          <span className="text-slate-500">{count} eventos</span>
-                        </div>
-                        <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                          <div
-                            className="bg-maint-600 h-full rounded-full transition-all duration-500"
-                            style={{ width: `${pct}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* MÁQUINAS CON MAYOR TIEMPO DE PARADA */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h4 className="font-bold text-xs uppercase text-slate-800 border-b pb-2">
-                Máquinas con Mayor Tiempo de Parada (min)
-              </h4>
-              <div className="space-y-3">
-                {topMachines.length === 0 ? (
-                  <p className="text-xs text-slate-400">Sin datos de máquinas.</p>
-                ) : (
-                  topMachines.map(([mName, dTime]) => {
-                    const pct = Math.round((dTime / maxMachineDowntime) * 100);
-                    return (
-                      <div key={mName} className="space-y-1">
-                        <div className="flex justify-between text-xs font-semibold">
-                          <span>Máquina {mName}</span>
-                          <span className="text-rose-600 font-bold">{dTime} min</span>
-                        </div>
-                        <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                          <div
-                            className="bg-rose-500 h-full rounded-full transition-all duration-500"
-                            style={{ width: `${pct}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* TAB 3: RESUMEN (SOLO ADMINISTRADORES) */}
+      {(activeTab === 'RESUMEN' || activeTab === 'DASHBOARD') && session?.role === 'Administrador' && (
+        <MaintenanceSummaryTab records={records} />
       )}
     </section>
   );

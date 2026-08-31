@@ -1,21 +1,67 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import { defineConfig } from 'vite';
+import obfuscator from 'vite-plugin-javascript-obfuscator';
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  const isProduction = mode === 'production' || process.env.NODE_ENV === 'production';
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      // Ofuscación de código JavaScript en producción
+      ...(isProduction
+        ? [
+            obfuscator({
+              apply: 'build',
+              options: {
+                compact: true,
+                controlFlowFlattening: true,
+                controlFlowFlatteningThreshold: 0.75,
+                deadCodeInjection: false,
+                debugProtection: false,
+                disableConsoleOutput: false,
+                identifierNamesGenerator: 'hexadecimal',
+                log: false,
+                numbersToExpressions: true,
+                renameGlobals: false,
+                selfDefending: false,
+                simplify: true,
+                splitStrings: true,
+                splitStringsChunkLength: 5,
+                stringArray: true,
+                stringArrayCallsTransform: true,
+                stringArrayEncoding: ['base64'],
+                stringArrayIndexShift: true,
+                stringArrayRotate: true,
+                stringArrayShuffle: true,
+                stringArrayWrappersCount: 2,
+                stringArrayWrappersType: 'variable',
+                stringArrayThreshold: 0.8,
+                unicodeEscapeSequence: false,
+                sourceMap: false,
+              },
+            }),
+          ]
+        : []),
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      sourcemap: false, // Desactiva generación de archivos .map en el build final
+      minify: 'esbuild',
+      rollupOptions: {
+        output: {
+          sourcemap: false,
+        },
+      },
+    },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };

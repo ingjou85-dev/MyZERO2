@@ -126,16 +126,17 @@ export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreat
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-              Usuario *
+              Usuario (Automático) *
             </label>
             <input
               type="text"
               id="admRegUser"
               value={user}
-              onChange={(e) => setUser(e.target.value.toUpperCase())}
+              readOnly
+              disabled
               required
-              placeholder="Generado automáticamente"
-              className="w-full border border-slate-300 p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-emerald-600 focus:outline-none uppercase font-bold text-slate-700"
+              placeholder="Se genera automáticamente"
+              className="w-full border border-slate-300 p-2.5 rounded-lg text-sm bg-slate-100 text-slate-700 font-mono font-bold cursor-not-allowed select-none"
             />
           </div>
           <div>
@@ -155,16 +156,18 @@ export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreat
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-600 uppercase mb-1">
-              Contraseña *
+              Contraseña (Solo números) *
             </label>
             <input
               type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
               id="admRegPass"
               value={pass}
-              onChange={(e) => setPass(e.target.value)}
+              onChange={(e) => setPass(e.target.value.replace(/\D/g, ''))}
               required
-              placeholder="••••"
-              className="w-full border border-slate-300 p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+              placeholder="Solo números (ej: 1234)"
+              className="w-full border border-slate-300 p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-emerald-600 focus:outline-none tracking-widest font-mono"
             />
           </div>
           <div>
@@ -173,12 +176,14 @@ export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreat
             </label>
             <input
               type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
               id="admRegPassConfirm"
               value={passConfirm}
-              onChange={(e) => setPassConfirm(e.target.value)}
+              onChange={(e) => setPassConfirm(e.target.value.replace(/\D/g, ''))}
               required
-              placeholder="••••"
-              className="w-full border border-slate-300 p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+              placeholder="Repita los números"
+              className="w-full border border-slate-300 p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-emerald-600 focus:outline-none tracking-widest font-mono"
             />
           </div>
         </div>

@@ -23,8 +23,10 @@ export type RecordStatus = 'EN_PROCESO' | 'PAUSADO' | 'FINALIZADO';
 export interface MaintenanceRecord {
   id: string;
   reportNumber: string;
+  reportSeqNumber?: number;
   module: 'MAINTENANCE';
   date: string;
+  station?: string;
   shift?: string;
   operator?: string;
   technician?: string;
@@ -39,6 +41,7 @@ export interface MaintenanceRecord {
   solution?: string;
   closingTime?: string;
   solvingTechnician?: string;
+  effectiveSolution?: 'Sí' | 'No';
   repairTimeMin?: number;
   totalDowntimeMin?: number;
   status: RecordStatus;
@@ -47,6 +50,7 @@ export interface MaintenanceRecord {
 export interface ProductionTurnRecord {
   id: string;
   date: string;
+  station?: string;
   shift: string;
   packer: string;
   tech: string;
@@ -61,23 +65,31 @@ export interface ProductionQualityRecord {
   reportNumber?: string;
   boxNumber: number;
   date: string;
+  station?: string;
   shift: string;
   machine: string;
   reference: string;
   packer: string;
   tech?: string;
   aux?: string;
-  weightBottom?: number;
-  weightLid?: number;
-  weightTotal?: number;
+  weightBottom?: number; // PESO VASO INDIVIDUAL
+  weightLid?: number; // PESO CAJA PLEGADIZA
+  weightTotal?: number; // PESO FINAL CAJA
   leakTest?: 'CUMPLE' | 'NO_CUMPLE';
+  leakTestQty?: number;
   visualInspection?: 'CUMPLE' | 'NO_CUMPLE';
+  visualInspectionQty?: number;
   tearTest?: 'CUMPLE' | 'NO_CUMPLE';
+  tearTestQty?: number;
+  testDetails?: string;
   approval?: 'APROBADO' | 'RECHAZADO' | 'PENDIENTE';
+  approvedBy?: 'PHINEAS' | 'ALEXANDRA' | string;
+  inspectionTime?: string;
   observations?: string;
   status: RecordStatus;
 }
 
 export type AppView = 'HOME' | 'MAINTENANCE' | 'PRODUCTION' | 'ADMIN_CREATE' | 'ADMIN_LIST';
-export type MaintTab = 'INGRESAR' | 'LIVE' | 'DASHBOARD';
-export type ProdTab = 'INGRESAR' | 'LIVE' | 'DASHBOARD';
+export type MaintTab = 'INGRESAR' | 'LIVE' | 'DASHBOARD' | 'RESUMEN';
+export type ProdTab = 'INGRESAR' | 'LIVE' | 'DASHBOARD' | 'RESUMEN';
+
