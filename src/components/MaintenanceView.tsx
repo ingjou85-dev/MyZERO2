@@ -3,6 +3,7 @@ import { MaintenanceRecord, MaintTab, UserSession, ProductionTurnRecord } from '
 import { MASTER_DATA } from '../constants/masterData.ts';
 import { RecordService } from '../services/recordService.ts';
 import { MaintenanceSummaryTab } from './MaintenanceSummaryTab.tsx';
+import { ExcelExportService } from '../services/excelExportService.ts';
 import {
   FileText,
   Activity,
@@ -1119,7 +1120,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-end sm:self-center">
+            <div className="flex flex-wrap items-center gap-2 self-end sm:self-center">
               {(filterDate || filterStation) && (
                 <button
                   onClick={() => {
@@ -1134,6 +1135,18 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               <span className="text-xs bg-slate-100 text-slate-700 font-bold px-3 py-1.5 rounded-full border border-slate-200">
                 {liveTableRecords.length} Registros
               </span>
+              {session?.role === 'Administrador' && (
+                <button
+                  id="btn-export-excel-maintenance"
+                  type="button"
+                  onClick={() => ExcelExportService.exportMaintenanceToExcel(liveTableRecords)}
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                  title="Descargar reporte de mantenimiento en Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Descargar Excel</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1143,58 +1156,72 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-wider font-bold">
                   <tr>
-                    <th className="p-3">Reporte</th>
-                    <th className="p-3">Fecha</th>
-                    <th className="p-3">Estación</th>
-                    <th className="p-3">Máquina</th>
-                    <th className="p-3">Hora Parada</th>
-                    <th className="p-3">Defecto</th>
-                    <th className="p-3">Solución</th>
-                    <th className="p-3">Mecánico</th>
-                    <th className="p-3">Efectiva</th>
-                    <th className="p-3">T. Muerto</th>
-                    <th className="p-3">Estado</th>
-                    {session?.role === 'Administrador' && <th className="p-3 text-center">Acciones</th>}
+                    <th className="p-3">REPORTE</th>
+                    <th className="p-3">FECHA</th>
+                    <th className="p-3">ESTACIÓN</th>
+                    <th className="p-3">MÁQUINA</th>
+                    <th className="p-3">HORA DE PARADA</th>
+                    <th className="p-3">DEFECTO</th>
+                    <th className="p-3">HORA DE LLEGADA DEL MECÁNICO</th>
+                    <th className="p-3">SOLUCIÓN</th>
+                    <th className="p-3">HORA FINAL DE SOLUCIÓN</th>
+                    <th className="p-3">MECÁNICO</th>
+                    <th className="p-3 text-center">EFECTIVA</th>
+                    <th className="p-3">ESTADO</th>
+                    {session?.role === 'Administrador' && <th className="p-3 text-center">ACCIONES</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {liveTableRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={session?.role === 'Administrador' ? 12 : 11} className="p-8 text-center text-slate-400">
+                      <td colSpan={session?.role === 'Administrador' ? 13 : 12} className="p-8 text-center text-slate-400">
                         No hay reportes de mantenimiento para los filtros seleccionados.
                       </td>
                     </tr>
                   ) : (
                     liveTableRecords.map((r) => (
                       <tr key={r.id} className="hover:bg-slate-50 transition">
+                        {/* 1. REPORTE */}
                         <td className="p-3 font-mono font-bold text-slate-900">{r.reportNumber}</td>
+                        {/* 2. FECHA */}
                         <td className="p-3 font-medium text-slate-600">{r.date}</td>
+                        {/* 3. ESTACIÓN */}
                         <td className="p-3 font-semibold text-slate-800">
                           {r.station || MASTER_DATA.getStationForMachine(r.machine || '') || 'Estación'}
                         </td>
+                        {/* 4. MÁQUINA */}
                         <td className="p-3 font-bold text-maint-700 bg-maint-50/50">Máq. {r.machine}</td>
-                        <td className="p-3 font-mono text-slate-700">{r.failureTime}</td>
+                        {/* 5. HORA DE PARADA */}
+                        <td className="p-3 font-mono text-slate-700">{r.failureTime || '--'}</td>
+                        {/* 6. DEFECTO */}
                         <td className="p-3 max-w-[150px] truncate text-slate-700" title={r.defect}>
                           {r.defect || '--'}
                         </td>
+                        {/* 7. HORA DE LLEGADA DEL MECÁNICO */}
+                        <td className="p-3 font-mono text-slate-700">{r.technicianArrivalTime || '--'}</td>
+                        {/* 8. SOLUCIÓN */}
                         <td className="p-3 max-w-[150px] truncate text-slate-700" title={r.solution}>
                           {r.solution || '--'}
                         </td>
+                        {/* 9. HORA FINAL DE SOLUCIÓN */}
+                        <td className="p-3 font-mono text-slate-700">{r.closingTime || '--'}</td>
+                        {/* 10. MECÁNICO */}
                         <td className="p-3 font-semibold text-slate-800">{r.solvingTechnician || r.technician || '--'}</td>
-                        <td className="p-3">
+                        {/* 11. EFECTIVA */}
+                        <td className="p-3 text-center">
                           {r.effectiveSolution === 'Sí' ? (
                             <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                               Sí
                             </span>
-                          ) : (
+                          ) : r.effectiveSolution === 'No' ? (
                             <span className="text-rose-700 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
                               No
                             </span>
+                          ) : (
+                            <span className="text-slate-400 font-mono">--</span>
                           )}
                         </td>
-                        <td className="p-3 font-mono font-bold text-slate-800">
-                          {r.totalDowntimeMin !== undefined ? `${r.totalDowntimeMin} min` : '--'}
-                        </td>
+                        {/* 12. ESTADO */}
                         <td className="p-3">
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -1208,6 +1235,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                             {r.status}
                           </span>
                         </td>
+                        {/* 13. ACCIONES */}
                         {session?.role === 'Administrador' && (
                           <td className="p-3 text-center">
                             <button

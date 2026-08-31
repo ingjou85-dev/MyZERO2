@@ -56,6 +56,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
       )
     : null;
 
+  const isAdmin = session?.role === 'Administrador';
+  const hasAccess = isAdmin || !!currentUserTurn;
+
   const handleRegisterOrEditClick = () => {
     setFinalizeAlert(null);
     setModuleLockAlert(null);
@@ -68,8 +71,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const handleModuleClick = (view: AppView) => {
     setModuleLockAlert(null);
-    // BLOQUEO DE MÓDULOS: El sistema no permite el ingreso si no ha iniciado turno
-    if (!currentUserTurn) {
+    // BLOQUEO DE MÓDULOS: Los administradores pueden ingresar sin registrar turno. Los operarios requieren turno activo.
+    if (!isAdmin && !currentUserTurn) {
       setModuleLockAlert(
         '⚠️ Debe registrar e iniciar su turno antes de ingresar a los módulos de Mantenimiento o Producción.'
       );
@@ -291,7 +294,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           id="card-module-maintenance"
           onClick={() => handleModuleClick('MAINTENANCE')}
           className={`border-2 rounded-2xl sm:rounded-3xl p-6 sm:p-7 text-left transition transform hover:-translate-y-1 shadow-lg hover:shadow-xl flex flex-col justify-between min-h-[200px] sm:min-h-[230px] group cursor-pointer ${
-            currentUserTurn
+            hasAccess
               ? 'bg-slate-900 hover:bg-maint-600 border-slate-800 hover:border-maint-400'
               : 'bg-slate-800/95 border-slate-700 opacity-95'
           }`}
@@ -300,7 +303,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <span className="p-3.5 sm:p-4 bg-maint-500/20 group-hover:bg-white/20 rounded-2xl text-maint-400 group-hover:text-white transition shadow-inner">
               <Wrench className="w-8 h-8 sm:w-9 sm:h-9 stroke-[2.2]" />
             </span>
-            {!currentUserTurn ? (
+            {!hasAccess ? (
               <span className="text-xs bg-amber-500/20 text-amber-300 font-bold px-3 py-1 rounded-full flex items-center gap-1.5 border border-amber-500/40">
                 <Lock className="w-3.5 h-3.5" /> Requiere Turno
               </span>
@@ -325,7 +328,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           id="card-module-production"
           onClick={() => handleModuleClick('PRODUCTION')}
           className={`border-2 rounded-2xl sm:rounded-3xl p-6 sm:p-7 text-left transition transform hover:-translate-y-1 shadow-lg hover:shadow-xl flex flex-col justify-between min-h-[200px] sm:min-h-[230px] group cursor-pointer ${
-            currentUserTurn
+            hasAccess
               ? 'bg-slate-900 hover:bg-prod-600 border-slate-800 hover:border-prod-400'
               : 'bg-slate-800/95 border-slate-700 opacity-95'
           }`}
@@ -334,7 +337,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <span className="p-3.5 sm:p-4 bg-prod-500/20 group-hover:bg-white/20 rounded-2xl text-prod-400 group-hover:text-white transition">
               <Layers className="w-8 h-8 sm:w-9 sm:h-9 stroke-[2.2]" />
             </span>
-            {!currentUserTurn ? (
+            {!hasAccess ? (
               <span className="text-xs bg-amber-500/20 text-amber-300 font-bold px-3 py-1 rounded-full flex items-center gap-1.5 border border-amber-500/40">
                 <Lock className="w-3.5 h-3.5" /> Requiere Turno
               </span>

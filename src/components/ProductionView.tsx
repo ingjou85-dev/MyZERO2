@@ -3,6 +3,7 @@ import { MASTER_DATA } from '../constants/masterData.ts';
 import { RecordService } from '../services/recordService.ts';
 import { ProductionQualityRecord, UserSession, ProductionTurnRecord } from '../types.ts';
 import { ProductionSummaryTab } from './ProductionSummaryTab.tsx';
+import { ExcelExportService } from '../services/excelExportService.ts';
 import {
   FileText,
   Activity,
@@ -24,7 +25,8 @@ import {
   X,
   Clock,
   FileSpreadsheet,
-  Settings2
+  Settings2,
+  Download
 } from 'lucide-react';
 
 interface ProductionViewProps {
@@ -234,10 +236,6 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
 
   const handleNextStep = () => {
     setValidationAlert('');
-    if (currentStep === 1 && !machine) {
-      setValidationAlert('Por favor seleccione la máquina.');
-      return;
-    }
     if (currentStep === 2 && (!weightBottom || !weightLid || !weightTotal)) {
       setValidationAlert('Por favor ingrese o seleccione los valores de control de peso (Vaso individual, Caja plegadiza y Final caja).');
       return;
@@ -600,68 +598,48 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
 
               {/* CUERPO DEL PASO */}
               <div className="p-6 space-y-4 text-left">
-                {/* PASO 1: CAJA NÚMERO X Y MÁQUINA EN CHIPS */}
+                {/* PASO 1: CONFIRMACIÓN DE CAJA NÚMERO X */}
                 {currentStep === 1 && (
                   <div className="space-y-4">
-                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex items-center justify-between">
+                    <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-2xl flex items-center justify-between shadow-sm">
                       <div>
-                        <span className="text-[10px] font-bold text-emerald-800 uppercase">Consecutivo por Usuario y Turno</span>
-                        <h4 className="text-xl font-black text-emerald-950">Caja número {boxNumber}</h4>
+                        <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Consecutivo de Turno</span>
+                        <h4 className="text-2xl font-black text-emerald-950">Caja número {boxNumber}</h4>
+                        <p className="text-xs text-emerald-700 font-medium mt-0.5">
+                          Iniciando registro de control de calidad para esta caja.
+                        </p>
                       </div>
-                      <span className="bg-emerald-600 text-white font-mono font-bold px-3 py-1 rounded-lg text-sm shadow-sm">
+                      <span className="bg-emerald-600 text-white font-mono font-bold px-4 py-2 rounded-xl text-lg shadow-md">
                         #{boxNumber}
                       </span>
                     </div>
 
-                    <div className="space-y-2.5">
-                      <div className="flex justify-between items-center">
-                        <label className="block text-xs font-bold text-slate-700 uppercase">
-                          Máquina de la {userStation} *
-                        </label>
-                        {machine && (
-                          <span className="text-[11px] font-bold text-prod-700 bg-prod-50 px-2 py-0.5 rounded border border-prod-200">
-                            Seleccionada: Máq. {machine}
-                          </span>
-                        )}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] font-bold uppercase">Estación:</span>
+                        <strong className="text-slate-800 font-bold">{userStation || 'Estación'}</strong>
                       </div>
-
-                      {/* CHIPS / ETIQUETAS CON SOLO EL NÚMERO DE LA MÁQUINA */}
-                      <div className="flex flex-wrap gap-2.5 pt-1">
-                        {availableMachines.map((m) => {
-                          const isSelected = machine === m;
-                          return (
-                            <button
-                              key={m}
-                              type="button"
-                              id={`chip-prod-machine-${m}`}
-                              onClick={() => {
-                                setMachine(m);
-                                setValidationAlert('');
-                              }}
-                              className={`px-4 py-2.5 rounded-xl text-sm font-bold transition cursor-pointer border ${
-                                isSelected
-                                  ? 'bg-prod-600 text-white border-prod-600 shadow-md ring-2 ring-prod-400/40 scale-105'
-                                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800 hover:border-slate-300'
-                              }`}
-                            >
-                              {m}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <p className="text-[11px] text-slate-500 pt-0.5">
-                        Seleccione el número de la máquina correspondiente a esta caja.
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3 rounded-xl border border-slate-200">
                       <div>
                         <span className="text-slate-400 block text-[10px] font-bold uppercase">Referencia:</span>
-                        <strong className="text-slate-800">{reference}</strong>
+                        <strong className="text-slate-800 font-bold">{reference}</strong>
                       </div>
                       <div>
                         <span className="text-slate-400 block text-[10px] font-bold uppercase">Empacador:</span>
-                        <strong className="text-slate-800">{session?.fullName}</strong>
+                        <strong className="text-slate-800 font-bold truncate block">{session?.fullName}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] font-bold uppercase">Turno:</span>
+                        <strong className="text-slate-800 font-bold">{activeTurn?.shift || MASTER_DATA.shifts[0]}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] font-bold uppercase">Fecha:</span>
+                        <strong className="text-slate-800 font-bold">{activeTurn?.date || new Date().toISOString().split('T')[0]}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] font-bold uppercase">Estado Inicial:</span>
+                        <span className="inline-block bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px]">
+                          En Proceso
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1222,7 +1200,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-end sm:self-center">
+            <div className="flex flex-wrap items-center gap-2 self-end sm:self-center">
               {(filterDate || filterStation) && (
                 <button
                   onClick={() => {
@@ -1237,6 +1215,18 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
               <span className="text-xs bg-slate-100 text-slate-700 font-bold px-3 py-1.5 rounded-full border border-slate-200">
                 {sequentialRecords.length} Cajas ({session?.role === 'Administrador' ? 'Vista Global' : 'Mis Cajas'})
               </span>
+              {session?.role === 'Administrador' && (
+                <button
+                  id="btn-export-excel-production"
+                  type="button"
+                  onClick={() => ExcelExportService.exportProductionToExcel(sequentialRecords)}
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                  title="Descargar reporte de producción en Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Descargar Excel</span>
+                </button>
+              )}
             </div>
           </div>
 

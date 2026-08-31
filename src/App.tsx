@@ -16,6 +16,7 @@ import { MaintenanceView } from './components/MaintenanceView.tsx';
 import { ProductionView } from './components/ProductionView.tsx';
 import { AdminCreateView } from './components/AdminCreateView.tsx';
 import { AdminListView } from './components/AdminListView.tsx';
+import { AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [session, setSession] = useState<UserSession | null>(null);
@@ -61,15 +62,33 @@ export default function App() {
     setUsersList(AuthService.getUsers());
   };
 
+  const [logoutAlert, setLogoutAlert] = useState<string | null>(null);
+
   const handleLoginSuccess = (newSession: UserSession) => {
     setSession(newSession);
     setActiveView('HOME');
   };
 
   const handleLogout = () => {
+    // REGLA: Los usuarios corrientes no pueden cerrar sesión sin antes finalizar su turno activo
+    if (session && session.role !== 'Administrador') {
+      const activeTurn = productionTurnRecords.find(
+        (r) =>
+          r.packer.toUpperCase() === session.fullName.toUpperCase() &&
+          r.status !== 'Finalizado'
+      );
+      if (activeTurn) {
+        setLogoutAlert(
+          'No puede cerrar la sesión de usuario sin antes finalizar su turno activo. Por favor diríjase al Inicio y presione "Finalizar mi Turno".'
+        );
+        return;
+      }
+    }
+
     AuthService.logout();
     setSession(null);
     setIsAdminMenuOpen(false);
+    setLogoutAlert(null);
   };
 
   const handleOpenProductionModal = (recordToEdit?: ProductionTurnRecord | null) => {
@@ -198,6 +217,37 @@ export default function App() {
         initialRecord={turnRecordToEdit}
         onSaveRecord={handleSaveProductionTurnRecord}
       />
+
+      {/* Modal Advertencia de Bloqueo de Cierre de Sesión con Turno Activo */}
+      {logoutAlert && (
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border border-slate-200 text-center space-y-4">
+            <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+              <AlertCircle className="w-8 h-8" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-black text-slate-900 uppercase">
+                Turno de Trabajo en Curso
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                {logoutAlert}
+              </p>
+            </div>
+            <div className="pt-2">
+              <button
+                id="btn-dismiss-logout-alert"
+                onClick={() => {
+                  setLogoutAlert(null);
+                  setActiveView('HOME');
+                }}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-xl text-xs uppercase shadow-md transition cursor-pointer"
+              >
+                Entendido, ir al Inicio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

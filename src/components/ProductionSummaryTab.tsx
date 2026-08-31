@@ -36,10 +36,12 @@ export const ProductionSummaryTab: React.FC<ProductionSummaryTabProps> = ({
     return true;
   });
 
-  // Lista de máquinas a mostrar: las máquinas con registros o las estándar de la estación
+  // Lista de máquinas a mostrar: estaciones/máquinas 451 a 455 (excluidas 456 a 462 según requerimiento)
   const allMachines = selectedStation
-    ? MASTER_DATA.getMachinesForStation(selectedStation)
-    : ['451', '452', '453', '454', '455', '456', '457', '458', '459', '460', '461', '462'];
+    ? MASTER_DATA.getMachinesForStation(selectedStation).filter(
+        (m) => !['456', '457', '458', '459', '460', '461', '462'].includes(m)
+      )
+    : ['451', '452', '453', '454', '455'];
 
   // Agrupación por Estación / Máquina
   const machineSummaryRows = allMachines.map((m) => {
@@ -193,18 +195,6 @@ export const ProductionSummaryTab: React.FC<ProductionSummaryTabProps> = ({
             </select>
             <Layers className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
           </div>
-
-          {selectedDate && (
-            <button
-              onClick={() => {
-                setSelectedDate('');
-                setSelectedStation('');
-              }}
-              className="text-xs text-prod-700 hover:underline font-bold px-2 py-1"
-            >
-              Ver Todo
-            </button>
-          )}
         </div>
       </div>
 

@@ -150,18 +150,6 @@ export const MaintenanceSummaryTab: React.FC<MaintenanceSummaryTabProps> = ({ re
             </select>
             <Layers className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
           </div>
-
-          {selectedDate && (
-            <button
-              onClick={() => {
-                setSelectedDate('');
-                setSelectedStation('');
-              }}
-              className="text-xs text-maint-600 hover:underline font-bold px-2 py-1"
-            >
-              Ver Todo
-            </button>
-          )}
         </div>
       </div>
 
