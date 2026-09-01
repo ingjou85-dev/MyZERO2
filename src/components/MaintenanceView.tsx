@@ -95,6 +95,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   const currentRecordRef = React.useRef<MaintenanceRecord | null>(null);
   const isFormOpenRef = React.useRef<boolean>(false);
   const currentStepRef = React.useRef<number>(1);
+  const finalizedIdsRef = React.useRef<Set<string>>(new Set());
 
   useEffect(() => {
     currentRecordRef.current = currentRecord;
@@ -102,11 +103,15 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     currentStepRef.current = currentStep;
   }, [currentRecord, isFormOpen, currentStep]);
 
-  // Cuarto Requerimiento: Si un registro permanece en 'EN_PROCESO' y ningún usuario lo tiene abierto o activo,
-  // el sistema cambia su estado automáticamente a 'PAUSADO' y sale en los Reportes Pausados / En Espera.
+  // Si un registro permanece en 'EN_PROCESO' y ningún usuario lo tiene abierto o activo,
+  // el sistema cambia su estado a 'PAUSADO'. Nunca afecta a reportes recién finalizados.
   useEffect(() => {
     records.forEach((r) => {
-      if (r.status === 'EN_PROCESO' && r.id !== currentRecord?.id) {
+      if (
+        r.status === 'EN_PROCESO' &&
+        r.id !== currentRecord?.id &&
+        !finalizedIdsRef.current.has(r.id)
+      ) {
         RecordService.saveMaintenanceRecord({
           ...r,
           status: 'PAUSADO'
@@ -118,9 +123,12 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   // Al desmontar la vista o salir, si hay un reporte en proceso activo, se guarda automáticamente como PAUSADO
   useEffect(() => {
     return () => {
-      if (currentRecordRef.current && isFormOpenRef.current && currentRecordRef.current.status === 'EN_PROCESO') {
-        const finalDef = currentRecordRef.current.defect || '';
-        const finalSol = currentRecordRef.current.solution || '';
+      if (
+        currentRecordRef.current &&
+        isFormOpenRef.current &&
+        currentRecordRef.current.status === 'EN_PROCESO' &&
+        !finalizedIdsRef.current.has(currentRecordRef.current.id)
+      ) {
         RecordService.saveMaintenanceRecord({
           ...currentRecordRef.current,
           currentStep: currentStepRef.current,
@@ -419,12 +427,17 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       status: 'FINALIZADO'
     };
 
-    RecordService.saveMaintenanceRecord(finalized).catch((err) => {
-      console.error('Error saving finalized report to Firestore:', err);
-    });
+    finalizedIdsRef.current.add(finalized.id);
+
+    // Actualización inmediata para reflejar 'FINALIZADO' en el Panel en Vivo al instante
+    onUpdateRecords(records.map((r) => (r.id === finalized.id ? finalized : r)));
 
     setIsFormOpen(false);
     setCurrentRecord(null);
+
+    RecordService.saveMaintenanceRecord(finalized).catch((err) => {
+      console.error('Error saving finalized report to Firestore:', err);
+    });
   };
 
   const handleResumeReport = (rec: MaintenanceRecord) => {
@@ -531,9 +544,12 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     return true;
   });
 
-  // Reportes pausados o en espera del usuario actual
+  // Reportes pausados o en espera del usuario actual (excluye estrictamente reportes finalizados)
   const userPausedReports = roleFilteredRecords.filter(
-    (r) => (r.status === 'PAUSADO' || r.status === 'EN_PROCESO') && r.id !== currentRecord?.id
+    (r) =>
+      r.status === 'PAUSADO' &&
+      r.id !== currentRecord?.id &&
+      !finalizedIdsRef.current.has(r.id)
   );
 
   // Si el usuario no es administrador y no ha iniciado turno, mostrar pantalla de bloqueo

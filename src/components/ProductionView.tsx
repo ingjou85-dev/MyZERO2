@@ -99,6 +99,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
   const currentRecordRef = React.useRef<ProductionQualityRecord | null>(null);
   const isFormOpenRef = React.useRef<boolean>(false);
   const currentStepRef = React.useRef<number>(1);
+  const finalizedIdsRef = React.useRef<Set<string>>(new Set());
 
   useEffect(() => {
     currentRecordRef.current = currentRecord;
@@ -106,11 +107,15 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     currentStepRef.current = currentStep;
   }, [currentRecord, isFormOpen, currentStep]);
 
-  // Cuarto Requerimiento: Si un registro permanece en 'EN_PROCESO' y ningún usuario lo tiene abierto o activo,
-  // el sistema cambia su estado automáticamente a 'PAUSADO' y sale en Cajas Pausadas / En Espera.
+  // Si un registro permanece en 'EN_PROCESO' y ningún usuario lo tiene abierto o activo,
+  // el sistema cambia su estado automáticamente a 'PAUSADO'. Nunca afecta a cajas finalizadas.
   useEffect(() => {
     records.forEach((r) => {
-      if (r.status === 'EN_PROCESO' && r.id !== currentRecord?.id) {
+      if (
+        r.status === 'EN_PROCESO' &&
+        r.id !== currentRecord?.id &&
+        !finalizedIdsRef.current.has(r.id)
+      ) {
         RecordService.saveProductionQualityRecord({
           ...r,
           status: 'PAUSADO'
@@ -122,7 +127,12 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
   // Al desmontar la vista o salir, si hay una caja en proceso activa, se guarda automáticamente como PAUSADO
   useEffect(() => {
     return () => {
-      if (currentRecordRef.current && isFormOpenRef.current && currentRecordRef.current.status === 'EN_PROCESO') {
+      if (
+        currentRecordRef.current &&
+        isFormOpenRef.current &&
+        currentRecordRef.current.status === 'EN_PROCESO' &&
+        !finalizedIdsRef.current.has(currentRecordRef.current.id)
+      ) {
         RecordService.saveProductionQualityRecord({
           ...currentRecordRef.current,
           currentStep: currentStepRef.current,
@@ -348,12 +358,18 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
       status: 'FINALIZADO'
     };
 
+    finalizedIdsRef.current.add(finalized.id);
+
+    // Actualización inmediata en estado local para reflejar 'FINALIZADO' en el Panel en Vivo al instante
+    setRecords((prev) => prev.map((r) => (r.id === finalized.id ? finalized : r)));
+
+    setIsFormOpen(false);
+    setCurrentRecord(null);
+
     RecordService.saveProductionQualityRecord(finalized).catch((err) => {
       console.error('Error finalizing box record:', err);
     });
 
-    setIsFormOpen(false);
-    setCurrentRecord(null);
     if (onSaved) onSaved();
   };
 
@@ -437,9 +453,12 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
   // ORDENAMIENTO SECUENCIAL (Caja #1 arriba, consecutivas hacia abajo - Orden Ascendente por boxNumber)
   const sequentialRecords = [...liveTableFiltered].sort((a, b) => (a.boxNumber || 0) - (b.boxNumber || 0));
 
-  // Cajas pausadas o en espera del usuario actual
+  // Cajas pausadas o en espera del usuario actual (excluye estrictamente cajas finalizadas)
   const userPausedBoxes = roleFilteredRecords.filter(
-    (r) => (r.status === 'PAUSADO' || r.status === 'EN_PROCESO') && r.id !== currentRecord?.id
+    (r) =>
+      r.status === 'PAUSADO' &&
+      r.id !== currentRecord?.id &&
+      !finalizedIdsRef.current.has(r.id)
   );
 
   // Bloqueo si no ha iniciado turno (excepto para usuarios administradores)
