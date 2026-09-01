@@ -44,6 +44,7 @@ export interface MaintenanceRecord {
   effectiveSolution?: 'Sí' | 'No';
   repairTimeMin?: number;
   totalDowntimeMin?: number;
+  currentStep?: number;
   status: RecordStatus;
 }
 
@@ -86,6 +87,7 @@ export interface ProductionQualityRecord {
   approvedBy?: 'PHINEAS' | 'ALEXANDRA' | string;
   inspectionTime?: string;
   observations?: string;
+  currentStep?: number;
   status: RecordStatus;
 }
 

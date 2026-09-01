@@ -71,9 +71,11 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   const [filterDate, setFilterDate] = useState('');
   const [filterStation, setFilterStation] = useState('');
 
-  // Máquinas filtradas dinámicamente por la estación del turno activo
-  const userStation = activeTurn?.station || (session?.role === 'Administrador' ? '' : 'Estación 51');
-  const availableMachines = userStation
+  // Máquinas filtradas dinámicamente por la estación del turno activo (o todas para Administrador sin turno)
+  const userStation = activeTurn?.station || (session?.role === 'Administrador' ? 'Estación 51' : 'Estación 51');
+  const availableMachines = session?.role === 'Administrador' && !activeTurn
+    ? MASTER_DATA.machines
+    : userStation
     ? MASTER_DATA.getMachinesForStation(userStation)
     : MASTER_DATA.machines;
 
@@ -88,6 +90,45 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     const mm = String(now.getMinutes()).padStart(2, '0');
     return `${hh}:${mm}`;
   };
+
+  // Referencias para auto-pausar en desmontaje si el formulario quedó en proceso
+  const currentRecordRef = React.useRef<MaintenanceRecord | null>(null);
+  const isFormOpenRef = React.useRef<boolean>(false);
+  const currentStepRef = React.useRef<number>(1);
+
+  useEffect(() => {
+    currentRecordRef.current = currentRecord;
+    isFormOpenRef.current = isFormOpen;
+    currentStepRef.current = currentStep;
+  }, [currentRecord, isFormOpen, currentStep]);
+
+  // Cuarto Requerimiento: Si un registro permanece en 'EN_PROCESO' y ningún usuario lo tiene abierto o activo,
+  // el sistema cambia su estado automáticamente a 'PAUSADO' y sale en los Reportes Pausados / En Espera.
+  useEffect(() => {
+    records.forEach((r) => {
+      if (r.status === 'EN_PROCESO' && r.id !== currentRecord?.id) {
+        RecordService.saveMaintenanceRecord({
+          ...r,
+          status: 'PAUSADO'
+        }).catch((e) => console.error('Error auto-pausing orphaned maintenance report:', e));
+      }
+    });
+  }, [records, currentRecord?.id]);
+
+  // Al desmontar la vista o salir, si hay un reporte en proceso activo, se guarda automáticamente como PAUSADO
+  useEffect(() => {
+    return () => {
+      if (currentRecordRef.current && isFormOpenRef.current && currentRecordRef.current.status === 'EN_PROCESO') {
+        const finalDef = currentRecordRef.current.defect || '';
+        const finalSol = currentRecordRef.current.solution || '';
+        RecordService.saveMaintenanceRecord({
+          ...currentRecordRef.current,
+          currentStep: currentStepRef.current,
+          status: 'PAUSADO'
+        }).catch((e) => console.error('Auto-pause on unmount error:', e));
+      }
+    };
+  }, []);
 
   const compareTimes = (t1: string, t2: string): number => {
     if (!t1 || !t2) return 0;
@@ -140,9 +181,10 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       date: activeTurn?.date || new Date().toISOString().split('T')[0],
       station: initialStation,
       shift: activeTurn?.shift || MASTER_DATA.shifts[0],
-      operator: session?.fullName || '',
+      operator: session?.fullName || 'Administrador',
       machine: initialMachine,
       failureTime: getNowTimeString(),
+      currentStep: 1,
       status: 'EN_PROCESO'
     };
 
@@ -214,13 +256,14 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     );
   };
 
-  const syncCurrentDraft = (extraStatus?: 'EN_PROCESO' | 'PAUSADO' | 'FINALIZADO') => {
+  const syncCurrentDraft = (extraStatus?: 'EN_PROCESO' | 'PAUSADO' | 'FINALIZADO', stepOverride?: number) => {
     if (!currentRecord) return;
     const finalDef = getEffectiveDefect();
     const finalSol = getEffectiveSolution();
     const defsList = getEffectiveDefectsList();
     const solsList = getEffectiveSolutionsList();
     const currentMachineStation = MASTER_DATA.getStationForMachine(machine) || userStation || 'Estación 51';
+    const effectiveStep = stepOverride !== undefined ? stepOverride : currentStep;
 
     const updated: MaintenanceRecord = {
       ...currentRecord,
@@ -239,6 +282,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       solvingTechnician,
       technician: solvingTechnician,
       effectiveSolution,
+      currentStep: effectiveStep,
       status: extraStatus || currentRecord.status
     };
 
@@ -303,19 +347,21 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       }
     }
 
-    syncCurrentDraft('EN_PROCESO');
-    setCurrentStep((prev) => Math.min(7, prev + 1));
+    const nextStep = Math.min(7, currentStep + 1);
+    syncCurrentDraft('EN_PROCESO', nextStep);
+    setCurrentStep(nextStep);
   };
 
   const handlePrevStep = () => {
     setValidationAlert('');
-    syncCurrentDraft('EN_PROCESO');
-    setCurrentStep((prev) => Math.max(1, prev - 1));
+    const prevStep = Math.max(1, currentStep - 1);
+    syncCurrentDraft('EN_PROCESO', prevStep);
+    setCurrentStep(prevStep);
   };
 
   const handlePauseReport = () => {
     if (!currentRecord) return;
-    syncCurrentDraft('PAUSADO');
+    syncCurrentDraft('PAUSADO', currentStep);
     setIsFormOpen(false);
     setCurrentRecord(null);
   };
@@ -369,6 +415,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       solvingTechnician,
       technician: solvingTechnician,
       effectiveSolution,
+      currentStep: 7,
       status: 'FINALIZADO'
     };
 
@@ -383,8 +430,17 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   const handleResumeReport = (rec: MaintenanceRecord) => {
     setCurrentRecord(rec);
     setIsFormOpen(true);
-    setCurrentStep(1);
     setValidationAlert('');
+
+    // Reanudar exactamente en el último dato ingresado / paso guardado
+    const targetStep = rec.currentStep || (
+      rec.closingTime ? 7 :
+      (rec.solutions && rec.solutions.length > 0) ? 6 :
+      rec.technicianArrivalTime ? 5 :
+      (rec.defects && rec.defects.length > 0) ? 4 :
+      rec.failureTime ? 2 : 1
+    );
+    setCurrentStep(targetStep);
 
     setMachine(rec.machine || availableMachines[0] || MASTER_DATA.machines[0]);
     setFailureTime(rec.failureTime || getNowTimeString());
@@ -427,6 +483,13 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     setClosingTime(rec.closingTime || '');
     setSolvingTechnician(rec.solvingTechnician || rec.technician || MASTER_DATA.technicians[0]);
     setEffectiveSolution(rec.effectiveSolution || 'Sí');
+
+    // Marcar como activo / en proceso en la base de datos
+    RecordService.saveMaintenanceRecord({
+      ...rec,
+      status: 'EN_PROCESO',
+      currentStep: targetStep
+    }).catch((err) => console.error('Error updating resumed report:', err));
   };
 
   const handleDeleteReport = async (id: string) => {
@@ -468,11 +531,13 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     return true;
   });
 
-  // Reportes pausados del usuario actual
-  const userPausedReports = roleFilteredRecords.filter((r) => r.status === 'PAUSADO');
+  // Reportes pausados o en espera del usuario actual
+  const userPausedReports = roleFilteredRecords.filter(
+    (r) => (r.status === 'PAUSADO' || r.status === 'EN_PROCESO') && r.id !== currentRecord?.id
+  );
 
-  // Si el usuario no ha iniciado turno, mostrar pantalla de bloqueo en Mantenimiento
-  if (!activeTurn) {
+  // Si el usuario no es administrador y no ha iniciado turno, mostrar pantalla de bloqueo
+  if (session?.role !== 'Administrador' && !activeTurn) {
     return (
       <section className="max-w-2xl w-full mx-auto bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center space-y-4 my-auto">
         <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto text-amber-600 border border-amber-200">
@@ -512,7 +577,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               REGISTRO DE MANTENIMIENTO
             </h2>
             <p className="text-[11px] text-slate-500">
-              Estación activa: <strong className="text-maint-700 font-bold">{userStation}</strong> | Operario: {session?.fullName}
+              Estación activa: <strong className="text-maint-700 font-bold">{userStation || 'General'}</strong> | Operario: {session?.fullName} {session?.role === 'Administrador' && '(Admin)'}
             </p>
           </div>
         </div>

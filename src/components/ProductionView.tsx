@@ -88,10 +88,49 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     return `${hh}:${mm}`;
   };
 
-  const userStation = activeTurn?.station || (session?.role === 'Administrador' ? '' : 'Estación 51');
-  const availableMachines = userStation
+  const userStation = activeTurn?.station || (session?.role === 'Administrador' ? 'Estación 51' : 'Estación 51');
+  const availableMachines = session?.role === 'Administrador' && !activeTurn
+    ? MASTER_DATA.machines
+    : userStation
     ? MASTER_DATA.getMachinesForStation(userStation)
     : MASTER_DATA.machines;
+
+  // Referencias para auto-pausar en desmontaje si el formulario quedó en proceso
+  const currentRecordRef = React.useRef<ProductionQualityRecord | null>(null);
+  const isFormOpenRef = React.useRef<boolean>(false);
+  const currentStepRef = React.useRef<number>(1);
+
+  useEffect(() => {
+    currentRecordRef.current = currentRecord;
+    isFormOpenRef.current = isFormOpen;
+    currentStepRef.current = currentStep;
+  }, [currentRecord, isFormOpen, currentStep]);
+
+  // Cuarto Requerimiento: Si un registro permanece en 'EN_PROCESO' y ningún usuario lo tiene abierto o activo,
+  // el sistema cambia su estado automáticamente a 'PAUSADO' y sale en Cajas Pausadas / En Espera.
+  useEffect(() => {
+    records.forEach((r) => {
+      if (r.status === 'EN_PROCESO' && r.id !== currentRecord?.id) {
+        RecordService.saveProductionQualityRecord({
+          ...r,
+          status: 'PAUSADO'
+        }).catch((e) => console.error('Error auto-pausing orphaned box record:', e));
+      }
+    });
+  }, [records, currentRecord?.id]);
+
+  // Al desmontar la vista o salir, si hay una caja en proceso activa, se guarda automáticamente como PAUSADO
+  useEffect(() => {
+    return () => {
+      if (currentRecordRef.current && isFormOpenRef.current && currentRecordRef.current.status === 'EN_PROCESO') {
+        RecordService.saveProductionQualityRecord({
+          ...currentRecordRef.current,
+          currentStep: currentStepRef.current,
+          status: 'PAUSADO'
+        }).catch((e) => console.error('Auto-pause box on unmount error:', e));
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const unsub = RecordService.subscribeProductionQualityRecords((loaded) => {
@@ -116,6 +155,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     const curName = session?.fullName?.trim().toUpperCase();
     const curUser = session?.user?.trim().toUpperCase();
     return records.filter((r) => {
+      if (session?.role === 'Administrador' && !activeTurn) return true;
       const recPacker = r.packer?.trim().toUpperCase();
       const isUser = recPacker === curName || recPacker === curUser;
       if (!isUser) return false;
@@ -149,7 +189,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
       shift: activeTurn?.shift || MASTER_DATA.shifts[0],
       machine: initialMachine,
       reference: activeTurn?.reference || MASTER_DATA.references[0],
-      packer: (session?.fullName || activeTurn?.packer || '').toUpperCase(),
+      packer: (session?.fullName || activeTurn?.packer || 'Administrador').toUpperCase(),
       tech: activeTurn?.tech || '',
       aux: activeTurn?.aux || '',
       leakTest: 'CUMPLE',
@@ -162,6 +202,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
       approvedBy: 'PHINEAS',
       inspectionTime: currentTime,
       testDetails: fullTestDetails,
+      currentStep: 1,
       status: 'EN_PROCESO'
     };
 
@@ -197,13 +238,14 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     return `PRUEBA DE GOTEO (${leakTestQty}): ${leakTest} | INSPECCIÓN VISUAL (${visualInspectionQty}): ${visualInspection} | PRUEBA DE RASGADO (${tearTestQty}): ${tearTest}`;
   };
 
-  const syncBoxDraft = (extraStatus?: 'EN_PROCESO' | 'PAUSADO' | 'FINALIZADO') => {
+  const syncBoxDraft = (extraStatus?: 'EN_PROCESO' | 'PAUSADO' | 'FINALIZADO', stepOverride?: number) => {
     if (!currentRecord) return;
     const wb = weightBottom ? parseFloat(weightBottom) : undefined;
     const wl = weightLid ? parseFloat(weightLid) : undefined;
     const wt = weightTotal ? parseFloat(weightTotal) : undefined;
 
     const fullTestDetails = getFullTestDetailsString();
+    const effectiveStep = stepOverride !== undefined ? stepOverride : currentStep;
 
     const updated: ProductionQualityRecord = {
       ...currentRecord,
@@ -224,6 +266,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
       approvedBy,
       inspectionTime: inspectionTime || getNowTimeString(),
       approval: 'APROBADO',
+      currentStep: effectiveStep,
       status: extraStatus || currentRecord.status
     };
 
@@ -241,19 +284,21 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
       return;
     }
 
-    syncBoxDraft('EN_PROCESO');
-    setCurrentStep((prev) => Math.min(4, prev + 1));
+    const nextStep = Math.min(4, currentStep + 1);
+    syncBoxDraft('EN_PROCESO', nextStep);
+    setCurrentStep(nextStep);
   };
 
   const handlePrevStep = () => {
     setValidationAlert('');
-    syncBoxDraft('EN_PROCESO');
-    setCurrentStep((prev) => Math.max(1, prev - 1));
+    const prevStep = Math.max(1, currentStep - 1);
+    syncBoxDraft('EN_PROCESO', prevStep);
+    setCurrentStep(prevStep);
   };
 
   const handlePauseBox = () => {
     if (!currentRecord) return;
-    syncBoxDraft('PAUSADO');
+    syncBoxDraft('PAUSADO', currentStep);
     setIsFormOpen(false);
     setCurrentRecord(null);
   };
@@ -299,6 +344,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
       approvedBy,
       inspectionTime: inspectionTime || getNowTimeString(),
       approval: 'APROBADO',
+      currentStep: 4,
       status: 'FINALIZADO'
     };
 
@@ -314,9 +360,16 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
   const handleResumeBox = (rec: ProductionQualityRecord) => {
     setCurrentRecord(rec);
     setIsFormOpen(true);
-    setCurrentStep(1);
     setValidationAlert('');
     setIsEditingQty(false);
+
+    // Reanudar exactamente en el último dato ingresado / paso guardado
+    const targetStep = rec.currentStep || (
+      rec.approvedBy ? 4 :
+      rec.leakTest ? 3 :
+      rec.weightBottom !== undefined ? 2 : 1
+    );
+    setCurrentStep(targetStep);
 
     setBoxNumber(rec.boxNumber || 1);
     setStation(rec.station || userStation || 'Estación 51');
@@ -333,6 +386,13 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     setTearTestQty(rec.tearTestQty || 6);
     setApprovedBy((rec.approvedBy as 'PHINEAS' | 'ALEXANDRA') || 'PHINEAS');
     setInspectionTime(rec.inspectionTime || getNowTimeString());
+
+    // Marcar como activo / en proceso en la base de datos
+    RecordService.saveProductionQualityRecord({
+      ...rec,
+      status: 'EN_PROCESO',
+      currentStep: targetStep
+    }).catch((err) => console.error('Error updating resumed box:', err));
   };
 
   const handleDeleteBox = async (id: string) => {
@@ -377,11 +437,13 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
   // ORDENAMIENTO SECUENCIAL (Caja #1 arriba, consecutivas hacia abajo - Orden Ascendente por boxNumber)
   const sequentialRecords = [...liveTableFiltered].sort((a, b) => (a.boxNumber || 0) - (b.boxNumber || 0));
 
-  // Cajas pausadas del usuario
-  const userPausedBoxes = roleFilteredRecords.filter((r) => r.status === 'PAUSADO');
+  // Cajas pausadas o en espera del usuario actual
+  const userPausedBoxes = roleFilteredRecords.filter(
+    (r) => (r.status === 'PAUSADO' || r.status === 'EN_PROCESO') && r.id !== currentRecord?.id
+  );
 
-  // Bloqueo si no ha iniciado turno
-  if (!activeTurn) {
+  // Bloqueo si no ha iniciado turno (excepto para usuarios administradores)
+  if (session?.role !== 'Administrador' && !activeTurn) {
     return (
       <section className="max-w-2xl w-full mx-auto bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center space-y-4 my-auto">
         <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto text-amber-600 border border-amber-200">
@@ -421,7 +483,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
               CONTROL DE CALIDAD Y PRODUCCIÓN
             </h2>
             <p className="text-[11px] text-slate-500">
-              Estación activa: <strong className="text-prod-700 font-bold">{userStation}</strong> | Ref: {activeTurn?.reference} | Empacador: {session?.fullName}
+              Estación activa: <strong className="text-prod-700 font-bold">{userStation || 'General'}</strong> | Ref: {activeTurn?.reference || 'General'} | Empacador: {session?.fullName} {session?.role === 'Administrador' && '(Admin)'}
             </p>
           </div>
         </div>

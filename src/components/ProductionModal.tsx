@@ -18,7 +18,16 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
   initialRecord,
   onSaveRecord
 }) => {
-  const [date, setDate] = useState('');
+  const getTodayDateString = () => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const todayDate = getTodayDateString();
+  const [date, setDate] = useState(todayDate);
   const [station, setStation] = useState(MASTER_DATA.stations[0]);
   const [shift, setShift] = useState(MASTER_DATA.shifts[0]);
   const [tech, setTech] = useState('');
@@ -28,15 +37,16 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      const today = getTodayDateString();
       if (initialRecord) {
-        setDate(initialRecord.date || new Date().toISOString().split('T')[0]);
+        setDate(initialRecord.date || today);
         setStation(initialRecord.station || MASTER_DATA.stations[0]);
         setShift(initialRecord.shift || MASTER_DATA.shifts[0]);
         setTech(initialRecord.tech || '');
         setAux(initialRecord.aux || MASTER_DATA.auxiliaries[0]);
         setReference(initialRecord.reference || '');
       } else {
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(today);
         setStation(MASTER_DATA.stations[0]);
         setShift(MASTER_DATA.shifts[0]);
         setTech('');
@@ -51,14 +61,15 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!date || !station || !shift || !session?.fullName || !tech || !aux || !reference) {
+    const effectiveDate = todayDate;
+    if (!effectiveDate || !station || !shift || !session?.fullName || !tech || !aux || !reference) {
       setErrorMsg('Por favor complete todos los campos obligatorios (*).');
       return;
     }
 
     const recToSave: ProductionTurnRecord = {
       id: initialRecord?.id || 'turn-' + Date.now(),
-      date,
+      date: effectiveDate,
       station,
       shift,
       packer: (initialRecord?.packer || session.fullName).toUpperCase(),
@@ -111,16 +122,21 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* 1. FECHA */}
+            {/* 1. FECHA (Restringido únicamente a la fecha actual del día) */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Fecha *</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                Fecha (Día Actual) *
+              </label>
               <input
                 type="date"
                 id="prodInpDate"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
+                value={todayDate}
+                min={todayDate}
+                max={todayDate}
+                onChange={() => setDate(todayDate)}
                 required
-                className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-bold focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-bold bg-slate-50 text-slate-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                title="Solo se permite seleccionar la fecha actual del día"
               />
             </div>
 
