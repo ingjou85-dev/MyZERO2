@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserSession, ProductionTurnRecord } from '../types.ts';
 import { MASTER_DATA } from '../constants/masterData.ts';
+import { formatPersonName } from '../utils/formatters.ts';
 import { X, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface ProductionModalProps {
@@ -184,9 +185,9 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
               <input
                 type="text"
                 id="prodInpPacker"
-                value={initialRecord?.packer || session?.fullName || ''}
+                value={formatPersonName(session?.fullName || initialRecord?.packer, session?.user)}
                 readOnly
-                className="w-full border border-slate-200 bg-slate-100 p-2.5 rounded-lg text-xs font-bold text-slate-700 uppercase cursor-not-allowed"
+                className="w-full border border-slate-200 bg-slate-100 p-2.5 rounded-lg text-xs font-bold text-slate-800 cursor-not-allowed"
               />
             </div>
 

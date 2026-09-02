@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { MASTER_DATA } from '../constants/masterData.ts';
 import { RecordService } from '../services/recordService.ts';
 import { ProductionQualityRecord, UserSession, ProductionTurnRecord } from '../types.ts';
+import { formatPersonName } from '../utils/formatters.ts';
 import { ProductionSummaryTab } from './ProductionSummaryTab.tsx';
 import { ExcelExportService } from '../services/excelExportService.ts';
+import { TimeInput } from './TimeInput.tsx';
 import {
   FileText,
   Activity,
@@ -107,14 +109,28 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     currentStepRef.current = currentStep;
   }, [currentRecord, isFormOpen, currentStep]);
 
-  // Si un registro permanece en 'EN_PROCESO' y ningún usuario lo tiene abierto o activo,
-  // el sistema cambia su estado automáticamente a 'PAUSADO'. Nunca afecta a cajas finalizadas.
+  // Helper para verificar si un registro de caja fue ingresado por el usuario de la sesión actual
+  const isMyBox = (r: ProductionQualityRecord): boolean => {
+    const curName = session?.fullName?.trim().toUpperCase();
+    const curUser = session?.user?.trim().toUpperCase();
+    const recPacker = r.packer?.trim().toUpperCase();
+    if (!recPacker) return false;
+    return (
+      (!!curName && recPacker === curName) ||
+      (!!curUser && recPacker === curUser) ||
+      (curUser === 'DDUVAN' && (recPacker === 'DUVÁN' || recPacker === 'DUVAN'))
+    );
+  };
+
+  // Si un registro del usuario actual permanece en 'EN_PROCESO' y no está abierto en el formulario,
+  // el sistema cambia su estado automáticamente a 'PAUSADO'. Nunca afecta a cajas finalizadas ni de otros usuarios.
   useEffect(() => {
     records.forEach((r) => {
       if (
         r.status === 'EN_PROCESO' &&
         r.id !== currentRecord?.id &&
-        !finalizedIdsRef.current.has(r.id)
+        !finalizedIdsRef.current.has(r.id) &&
+        isMyBox(r)
       ) {
         RecordService.saveProductionQualityRecord({
           ...r,
@@ -122,7 +138,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
         }).catch((e) => console.error('Error auto-pausing orphaned box record:', e));
       }
     });
-  }, [records, currentRecord?.id]);
+  }, [records, currentRecord?.id, session?.fullName, session?.user]);
 
   // Al desmontar la vista o salir, si hay una caja en proceso activa, se guarda automáticamente como PAUSADO
   useEffect(() => {
@@ -453,12 +469,15 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
   // ORDENAMIENTO SECUENCIAL (Caja #1 arriba, consecutivas hacia abajo - Orden Ascendente por boxNumber)
   const sequentialRecords = [...liveTableFiltered].sort((a, b) => (a.boxNumber || 0) - (b.boxNumber || 0));
 
-  // Cajas pausadas o en espera del usuario actual (excluye estrictamente cajas finalizadas)
-  const userPausedBoxes = roleFilteredRecords.filter(
+  // PRIMER REQUERIMIENTO: Para TODOS los usuarios (incluyendo administradores),
+  // la sección de "Cajas Pausadas / En Proceso" muestra ÚNICA Y EXCLUSIVAMENTE
+  // los registros ingresados por el usuario con sesión iniciada.
+  const userPausedBoxes = records.filter(
     (r) =>
-      r.status === 'PAUSADO' &&
+      (r.status === 'PAUSADO' || r.status === 'EN_PROCESO') &&
       r.id !== currentRecord?.id &&
-      !finalizedIdsRef.current.has(r.id)
+      !finalizedIdsRef.current.has(r.id) &&
+      isMyBox(r)
   );
 
   // Bloqueo si no ha iniciado turno (excepto para usuarios administradores)
@@ -502,7 +521,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
               CONTROL DE CALIDAD Y PRODUCCIÓN
             </h2>
             <p className="text-[11px] text-slate-500">
-              Estación activa: <strong className="text-prod-700 font-bold">{userStation || 'General'}</strong> | Ref: {activeTurn?.reference || 'General'} | Empacador: {session?.fullName} {session?.role === 'Administrador' && '(Admin)'}
+              Estación activa: <strong className="text-prod-700 font-bold">{userStation || 'General'}</strong> | Ref: {activeTurn?.reference || 'General'} | Empacador: {formatPersonName(session?.fullName, session?.user)} {session?.role === 'Administrador' && '(Admin)'}
             </p>
           </div>
         </div>
@@ -706,7 +725,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
                       </div>
                       <div>
                         <span className="text-slate-400 block text-[10px] font-bold uppercase">Empacador:</span>
-                        <strong className="text-slate-800 font-bold truncate block">{session?.fullName}</strong>
+                        <strong className="text-slate-800 font-bold truncate block">{formatPersonName(session?.fullName, session?.user)}</strong>
                       </div>
                       <div>
                         <span className="text-slate-400 block text-[10px] font-bold uppercase">Turno:</span>
@@ -1062,30 +1081,18 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
                       </div>
                     </div>
 
-                    {/* HORA DE INSPECCIÓN */}
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <label className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-prod-600" />
-                          Hora de Inspección *
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setInspectionTime(getNowTimeString())}
-                          className="text-[10px] font-bold text-prod-600 hover:underline cursor-pointer"
-                        >
-                          Hora Actual
-                        </button>
-                      </div>
-                      <input
-                        type="time"
-                        id="prodInpInspectionTime"
-                        value={inspectionTime}
-                        onChange={(e) => setInspectionTime(e.target.value)}
-                        required
-                        className="w-full border border-slate-300 p-2.5 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-prod-600 focus:outline-none"
-                      />
-                    </div>
+                    {/* HORA DE INSPECCIÓN (OPTIMIZADO CON TECLADO NUMÉRICO) */}
+                    <TimeInput
+                      id="prodInpInspectionTime"
+                      label="Hora de Inspección *"
+                      value={inspectionTime}
+                      onChange={(val) => setInspectionTime(val)}
+                      required
+                      accentColor="prod"
+                      placeholder="HH:MM (24h)"
+                      helperText="Momento exacto en que se realiza la inspección de calidad."
+                      onNowClick={() => setInspectionTime(getNowTimeString())}
+                    />
 
                     {/* OPCIÓN PARA EDITAR CANTIDADES EN PASO 4 */}
                     <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl space-y-3">

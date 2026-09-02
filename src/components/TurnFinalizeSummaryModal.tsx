@@ -1,5 +1,6 @@
 import React from 'react';
 import { ProductionTurnRecord, ProductionQualityRecord, UserSession } from '../types.ts';
+import { formatPersonName } from '../utils/formatters.ts';
 import {
   X,
   CheckCircle2,
@@ -33,12 +34,18 @@ export const TurnFinalizeSummaryModal: React.FC<TurnFinalizeSummaryModalProps> =
 }) => {
   if (!isOpen) return null;
 
-  const currentPacker = (session?.fullName || turn?.packer || '').toUpperCase();
-
   // Filtrar registros de producción del turno / operario actual
   const userRecords = qualityRecords.filter((r) => {
     if (!r.packer) return false;
-    const isSamePacker = r.packer.toUpperCase() === currentPacker;
+    const pk = r.packer.trim().toUpperCase();
+    const curName = session?.fullName?.trim().toUpperCase();
+    const curUser = session?.user?.trim().toUpperCase();
+    const turnPacker = turn?.packer?.trim().toUpperCase();
+    const isSamePacker =
+      (!!curName && pk === curName) ||
+      (!!curUser && pk === curUser) ||
+      (!!turnPacker && pk === turnPacker) ||
+      (curUser === 'DDUVAN' && (pk === 'DUVÁN' || pk === 'DUVAN'));
     if (turn?.date) {
       return isSamePacker && r.date === turn.date;
     }
@@ -111,7 +118,7 @@ export const TurnFinalizeSummaryModal: React.FC<TurnFinalizeSummaryModalProps> =
             <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <span className="font-bold text-slate-700 uppercase flex items-center gap-1.5 text-[11px]">
                 <User className="w-3.5 h-3.5 text-prod-600" />
-                Operario: <strong className="text-slate-900">{session?.fullName || turn?.packer}</strong>
+                Operario: <strong className="text-slate-900">{formatPersonName(session?.fullName || turn?.packer, session?.user)}</strong>
               </span>
               <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
                 Listo para Cierre

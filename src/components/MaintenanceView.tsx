@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { MaintenanceRecord, MaintTab, UserSession, ProductionTurnRecord } from '../types.ts';
+import { formatPersonName } from '../utils/formatters.ts';
 import { MASTER_DATA } from '../constants/masterData.ts';
 import { RecordService } from '../services/recordService.ts';
 import { MaintenanceSummaryTab } from './MaintenanceSummaryTab.tsx';
 import { ExcelExportService } from '../services/excelExportService.ts';
+import { TimeInput } from './TimeInput.tsx';
 import {
   FileText,
   Activity,
@@ -103,14 +105,28 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     currentStepRef.current = currentStep;
   }, [currentRecord, isFormOpen, currentStep]);
 
-  // Si un registro permanece en 'EN_PROCESO' y ningún usuario lo tiene abierto o activo,
-  // el sistema cambia su estado a 'PAUSADO'. Nunca afecta a reportes recién finalizados.
+  // Helper para verificar si un reporte fue registrado por el usuario con sesión activa
+  const isMyReport = (r: MaintenanceRecord): boolean => {
+    const curName = session?.fullName?.trim().toUpperCase();
+    const curUser = session?.user?.trim().toUpperCase();
+    const recOperator = r.operator?.trim().toUpperCase();
+    if (!recOperator) return false;
+    return (
+      (!!curName && recOperator === curName) ||
+      (!!curUser && recOperator === curUser) ||
+      (curUser === 'DDUVAN' && (recOperator === 'DUVÁN' || recOperator === 'DUVAN'))
+    );
+  };
+
+  // Si un registro del usuario actual permanece en 'EN_PROCESO' y no está abierto en el formulario,
+  // el sistema cambia su estado a 'PAUSADO'. Nunca afecta a reportes recién finalizados ni de otros usuarios.
   useEffect(() => {
     records.forEach((r) => {
       if (
         r.status === 'EN_PROCESO' &&
         r.id !== currentRecord?.id &&
-        !finalizedIdsRef.current.has(r.id)
+        !finalizedIdsRef.current.has(r.id) &&
+        isMyReport(r)
       ) {
         RecordService.saveMaintenanceRecord({
           ...r,
@@ -118,7 +134,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
         }).catch((e) => console.error('Error auto-pausing orphaned maintenance report:', e));
       }
     });
-  }, [records, currentRecord?.id]);
+  }, [records, currentRecord?.id, session?.fullName, session?.user]);
 
   // Al desmontar la vista o salir, si hay un reporte en proceso activo, se guarda automáticamente como PAUSADO
   useEffect(() => {
@@ -544,12 +560,15 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     return true;
   });
 
-  // Reportes pausados o en espera del usuario actual (excluye estrictamente reportes finalizados)
-  const userPausedReports = roleFilteredRecords.filter(
+  // PRIMER REQUERIMIENTO: Para TODOS los usuarios (incluyendo administradores),
+  // la sección de "Reportes Pausados / En Espera" muestra ÚNICA Y EXCLUSIVAMENTE
+  // los registros ingresados por el usuario con sesión iniciada.
+  const userPausedReports = records.filter(
     (r) =>
-      r.status === 'PAUSADO' &&
+      (r.status === 'PAUSADO' || r.status === 'EN_PROCESO') &&
       r.id !== currentRecord?.id &&
-      !finalizedIdsRef.current.has(r.id)
+      !finalizedIdsRef.current.has(r.id) &&
+      isMyReport(r)
   );
 
   // Si el usuario no es administrador y no ha iniciado turno, mostrar pantalla de bloqueo
@@ -593,7 +612,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
               REGISTRO DE MANTENIMIENTO
             </h2>
             <p className="text-[11px] text-slate-500">
-              Estación activa: <strong className="text-maint-700 font-bold">{userStation || 'General'}</strong> | Operario: {session?.fullName} {session?.role === 'Administrador' && '(Admin)'}
+              Estación activa: <strong className="text-maint-700 font-bold">{userStation || 'General'}</strong> | Operario: {formatPersonName(session?.fullName, session?.user)} {session?.role === 'Administrador' && '(Admin)'}
             </p>
           </div>
         </div>
@@ -819,38 +838,26 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                   </div>
                 )}
 
-                {/* PASO 2: HORA DE PARADA */}
+                {/* PASO 2: HORA DE PARADA (OPTIMIZADO CON TECLADO NUMÉRICO) */}
                 {currentStep === 2 && (
                   <div className="space-y-3">
-                    <label className="block text-xs font-bold text-slate-700 uppercase">
-                      Hora de Parada *
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="time"
-                        id="maintInpFailureTime"
-                        value={failureTime}
-                        onChange={(e) => {
-                          setFailureTime(e.target.value);
-                          setValidationAlert('');
-                        }}
-                        required
-                        className="w-full border border-slate-300 p-3 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFailureTime(getNowTimeString());
-                          setValidationAlert('');
-                        }}
-                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs uppercase shrink-0 transition"
-                      >
-                        Hora Actual
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-500">
-                      Momento exacto en que la máquina detuvo su operación por falla o atasco.
-                    </p>
+                    <TimeInput
+                      id="maintInpFailureTime"
+                      label="Hora de Parada *"
+                      value={failureTime}
+                      onChange={(val) => {
+                        setFailureTime(val);
+                        setValidationAlert('');
+                      }}
+                      required
+                      accentColor="maint"
+                      placeholder="HH:MM (24h)"
+                      helperText="Momento exacto en que la máquina detuvo su operación por falla o atasco."
+                      onNowClick={() => {
+                        setFailureTime(getNowTimeString());
+                        setValidationAlert('');
+                      }}
+                    />
                   </div>
                 )}
 
@@ -922,38 +929,26 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                   </div>
                 )}
 
-                {/* PASO 4: HORA DE LLEGADA DEL MECÁNICO (LIMPIO, SIN CUADROS DE ESPERA) */}
+                {/* PASO 4: HORA DE LLEGADA DEL MECÁNICO (OPTIMIZADO CON TECLADO NUMÉRICO) */}
                 {currentStep === 4 && (
                   <div className="space-y-3">
-                    <label className="block text-xs font-bold text-slate-700 uppercase">
-                      Hora de Llegada del Mecánico *
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="time"
-                        id="maintInpArrivalTime"
-                        value={technicianArrivalTime}
-                        onChange={(e) => {
-                          setTechnicianArrivalTime(e.target.value);
-                          setValidationAlert('');
-                        }}
-                        required
-                        className="w-full border border-slate-300 p-3 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTechnicianArrivalTime(getNowTimeString());
-                          setValidationAlert('');
-                        }}
-                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs uppercase shrink-0 transition"
-                      >
-                        Hora Actual
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-500">
-                      Momento exacto en que el mecánico o técnico se presentó en la máquina.
-                    </p>
+                    <TimeInput
+                      id="maintInpArrivalTime"
+                      label="Hora de Llegada del Mecánico *"
+                      value={technicianArrivalTime}
+                      onChange={(val) => {
+                        setTechnicianArrivalTime(val);
+                        setValidationAlert('');
+                      }}
+                      required
+                      accentColor="maint"
+                      placeholder="HH:MM (24h)"
+                      helperText="Momento exacto en que el mecánico o técnico se presentó en la máquina."
+                      onNowClick={() => {
+                        setTechnicianArrivalTime(getNowTimeString());
+                        setValidationAlert('');
+                      }}
+                    />
                   </div>
                 )}
 
@@ -1025,38 +1020,26 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                   </div>
                 )}
 
-                {/* PASO 6: HORA FINAL DE SOLUCIÓN / CIERRE (LIMPIO) */}
+                {/* PASO 6: HORA FINAL DE SOLUCIÓN / CIERRE (OPTIMIZADO CON TECLADO NUMÉRICO) */}
                 {currentStep === 6 && (
                   <div className="space-y-3">
-                    <label className="block text-xs font-bold text-slate-700 uppercase">
-                      Hora Final de Solución / Cierre *
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="time"
-                        id="maintInpClosingTime"
-                        value={closingTime}
-                        onChange={(e) => {
-                          setClosingTime(e.target.value);
-                          setValidationAlert('');
-                        }}
-                        required
-                        className="w-full border border-slate-300 p-3 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setClosingTime(getNowTimeString());
-                          setValidationAlert('');
-                        }}
-                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs uppercase shrink-0 transition"
-                      >
-                        Hora Actual
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-500">
-                      Momento en que la máquina quedó reparada y lista para continuar producción.
-                    </p>
+                    <TimeInput
+                      id="maintInpClosingTime"
+                      label="Hora Final de Solución / Cierre *"
+                      value={closingTime}
+                      onChange={(val) => {
+                        setClosingTime(val);
+                        setValidationAlert('');
+                      }}
+                      required
+                      accentColor="maint"
+                      placeholder="HH:MM (24h)"
+                      helperText="Momento en que la máquina quedó reparada y lista para continuar producción."
+                      onNowClick={() => {
+                        setClosingTime(getNowTimeString());
+                        setValidationAlert('');
+                      }}
+                    />
                   </div>
                 )}
 

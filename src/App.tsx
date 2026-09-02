@@ -47,6 +47,30 @@ export default function App() {
 
     const unsubUsers = AuthService.subscribeUsers((users) => {
       setUsersList(users);
+      // Mantener la sesión sincronizada con el nombre completo y rol actualizados en Firestore
+      const currentStored = AuthService.getSession();
+      if (currentStored) {
+        const found = users.find(
+          (u) =>
+            u.user.toUpperCase() === currentStored.user.toUpperCase() ||
+            u.fullName.toUpperCase() === currentStored.fullName.toUpperCase()
+        );
+        if (found) {
+          let resolvedFullName = found.fullName;
+          if (found.user.toUpperCase() === 'DDUVAN' && (found.fullName.toUpperCase() === 'DDUVAN' || !found.fullName)) {
+            resolvedFullName = 'Duván';
+          }
+          if (resolvedFullName !== currentStored.fullName || found.role !== currentStored.role) {
+            const updated: UserSession = {
+              ...currentStored,
+              fullName: resolvedFullName,
+              role: found.role
+            };
+            AuthService.saveSession(updated);
+            setSession(updated);
+          }
+        }
+      }
     });
 
     return () => {
@@ -72,11 +96,17 @@ export default function App() {
   const handleLogout = () => {
     // REGLA: Los usuarios corrientes no pueden cerrar sesión sin antes finalizar su turno activo
     if (session && session.role !== 'Administrador') {
-      const activeTurn = productionTurnRecords.find(
-        (r) =>
-          r.packer.toUpperCase() === session.fullName.toUpperCase() &&
-          r.status !== 'Finalizado'
-      );
+      const activeTurn = productionTurnRecords.find((r) => {
+        if (r.status === 'Finalizado') return false;
+        const pk = r.packer?.trim().toUpperCase();
+        const curName = session.fullName?.trim().toUpperCase();
+        const curUser = session.user?.trim().toUpperCase();
+        return (
+          pk === curName ||
+          pk === curUser ||
+          (curUser === 'DDUVAN' && (pk === 'DUVÁN' || pk === 'DUVAN'))
+        );
+      });
       if (activeTurn) {
         setLogoutAlert(
           'No puede cerrar la sesión de usuario sin antes finalizar su turno activo. Por favor diríjase al Inicio y presione "Finalizar mi Turno".'
@@ -156,11 +186,17 @@ export default function App() {
                 records={maintenanceRecords}
                 activeTurn={
                   session
-                    ? productionTurnRecords.find(
-                        (r) =>
-                          r.packer.toUpperCase() === session.fullName.toUpperCase() &&
-                          r.status !== 'Finalizado'
-                      ) || null
+                    ? productionTurnRecords.find((r) => {
+                        if (r.status === 'Finalizado') return false;
+                        const pk = r.packer?.trim().toUpperCase();
+                        const curName = session.fullName?.trim().toUpperCase();
+                        const curUser = session.user?.trim().toUpperCase();
+                        return (
+                          pk === curName ||
+                          pk === curUser ||
+                          (curUser === 'DDUVAN' && (pk === 'DUVÁN' || pk === 'DUVAN'))
+                        );
+                      }) || null
                     : null
                 }
                 onOpenTurnModal={() => handleOpenProductionModal(null)}
@@ -174,11 +210,17 @@ export default function App() {
                 initialTab={productionInitialTab}
                 activeTurn={
                   session
-                    ? productionTurnRecords.find(
-                        (r) =>
-                          r.packer.toUpperCase() === session.fullName.toUpperCase() &&
-                          r.status !== 'Finalizado'
-                      ) || null
+                    ? productionTurnRecords.find((r) => {
+                        if (r.status === 'Finalizado') return false;
+                        const pk = r.packer?.trim().toUpperCase();
+                        const curName = session.fullName?.trim().toUpperCase();
+                        const curUser = session.user?.trim().toUpperCase();
+                        return (
+                          pk === curName ||
+                          pk === curUser ||
+                          (curUser === 'DDUVAN' && (pk === 'DUVÁN' || pk === 'DUVAN'))
+                        );
+                      }) || null
                     : null
                 }
                 onOpenTurnModal={() => handleOpenProductionModal(null)}

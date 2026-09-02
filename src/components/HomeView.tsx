@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppView, ProductionTurnRecord, ProductionQualityRecord, UserSession } from '../types.ts';
 import { RecordService } from '../services/recordService.ts';
+import { formatPersonName } from '../utils/formatters.ts';
 import { TurnFinalizeSummaryModal } from './TurnFinalizeSummaryModal.tsx';
 import {
   Plus,
@@ -49,11 +50,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   // PRIVACIDAD POR SESIÓN: El usuario solo ve su propio turno activo
   const currentUserTurn = session
-    ? recentProductionRecords.find(
-        (r) =>
-          r.packer.toUpperCase() === session.fullName.toUpperCase() &&
-          r.status !== 'Finalizado'
-      )
+    ? recentProductionRecords.find((r) => {
+        if (r.status === 'Finalizado') return false;
+        const pk = r.packer?.trim().toUpperCase();
+        const curName = session.fullName?.trim().toUpperCase();
+        const curUser = session.user?.trim().toUpperCase();
+        return (
+          (!!curName && pk === curName) ||
+          (!!curUser && pk === curUser) ||
+          (curUser === 'DDUVAN' && (pk === 'DUVÁN' || pk === 'DUVAN'))
+        );
+      })
     : null;
 
   const isAdmin = session?.role === 'Administrador';
@@ -93,16 +100,22 @@ export const HomeView: React.FC<HomeViewProps> = ({
       return;
     }
 
-    const { hasPending, countMaint, countProd } = RecordService.hasPendingRecords();
+    // SEGUNDO REQUERIMIENTO: La validación evalúa únicamente la carga del usuario actual
+    const { hasPending, countMaint, countProd } = RecordService.hasPendingRecords(
+      undefined,
+      qualityRecords,
+      session?.fullName,
+      session?.user
+    );
 
     if (hasPending) {
       const details = [];
       if (countMaint > 0) details.push(`${countMaint} reporte(s) de MANTENIMIENTO`);
-      if (countProd > 0) details.push(`${countProd} registro(s) de PRODUCCIÓN`);
+      if (countProd > 0) details.push(`${countProd} caja(s) de PRODUCCIÓN`);
 
       setFinalizeAlert({
         type: 'error',
-        message: `Pendiente terminar registros según corresponda (${details.join(', ')} en proceso o pausados).`
+        message: `Tiene registros pendientes por terminar (${details.join(', ')} en proceso o pausados). Debe completarlos antes de finalizar su turno.`
       });
       return;
     }
@@ -191,7 +204,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </h3>
 
             {currentUserTurn ? (
-              <div className="mt-1.5 text-[10px] text-slate-600 grid grid-cols-2 gap-x-2 gap-y-0.5 bg-slate-50 p-2 rounded-lg border border-slate-100">
+              <div className="mt-1.5 text-[10px] text-slate-600 grid grid-cols-2 gap-x-2 gap-y-1 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                <div className="col-span-2 pb-1.5 mb-0.5 border-b border-slate-200/70 flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Operario:</span>
+                  <strong className="text-slate-900 font-bold text-[11px]">
+                    {formatPersonName(session?.fullName || currentUserTurn.packer, session?.user)}
+                  </strong>
+                </div>
                 <div>
                   <span className="text-slate-400">Estación: </span>
                   <strong className="text-slate-800 font-bold">{currentUserTurn.station || 'Estación 51'}</strong>
@@ -210,9 +229,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </div>
               </div>
             ) : (
-              <p className="text-[10px] text-slate-500 mt-1">
-                Registre estación, turno, técnico, auxiliar y referencia.
-              </p>
+              <div className="mt-1.5 text-[10px] text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100 space-y-1">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-200/60">
+                  <span className="text-slate-500 font-medium">Operario:</span>
+                  <strong className="text-slate-900 font-bold text-[11px]">
+                    {formatPersonName(session?.fullName, session?.user)}
+                  </strong>
+                </div>
+                <p className="text-[10px] text-slate-500 pt-0.5">
+                  Registre estación, turno, técnico, auxiliar y referencia para iniciar labores.
+                </p>
+              </div>
             )}
           </div>
 

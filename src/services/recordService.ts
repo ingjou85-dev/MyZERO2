@@ -238,16 +238,46 @@ export const RecordService = {
     }
   },
 
-  // Validación de pendientes para finalizar turno
+  // Validación de pendientes para finalizar turno (evalúa únicamente los registros del usuario actual)
   hasPendingRecords: (
     maintList?: MaintenanceRecord[],
-    prodList?: ProductionQualityRecord[]
+    prodList?: ProductionQualityRecord[],
+    userFullName?: string,
+    username?: string
   ): { hasPending: boolean; countMaint: number; countProd: number } => {
     const maint = maintList || cachedMaintenanceRecords;
     const prod = prodList || cachedProductionQualityRecords;
 
-    const pendingMaint = maint.filter((r) => r.status === 'EN_PROCESO' || r.status === 'PAUSADO').length;
-    const pendingProd = prod.filter((r) => r.status === 'EN_PROCESO' || r.status === 'PAUSADO').length;
+    const uName = userFullName?.trim().toUpperCase();
+    const uUser = username?.trim().toUpperCase();
+
+    const pendingMaint = maint.filter((r) => {
+      const isPending = r.status === 'EN_PROCESO' || r.status === 'PAUSADO';
+      if (!isPending) return false;
+      if (uName || uUser) {
+        const op = r.operator?.trim().toUpperCase();
+        return (
+          (!!uName && op === uName) ||
+          (!!uUser && op === uUser) ||
+          (uUser === 'DDUVAN' && (op === 'DUVÁN' || op === 'DUVAN'))
+        );
+      }
+      return true;
+    }).length;
+
+    const pendingProd = prod.filter((r) => {
+      const isPending = r.status === 'EN_PROCESO' || r.status === 'PAUSADO';
+      if (!isPending) return false;
+      if (uName || uUser) {
+        const pk = r.packer?.trim().toUpperCase();
+        return (
+          (!!uName && pk === uName) ||
+          (!!uUser && pk === uUser) ||
+          (uUser === 'DDUVAN' && (pk === 'DUVÁN' || pk === 'DUVAN'))
+        );
+      }
+      return true;
+    }).length;
 
     return {
       hasPending: pendingMaint > 0 || pendingProd > 0,

@@ -163,8 +163,12 @@ export const AuthService = {
         if (found.status === 'Inactivo') {
           return { success: false, message: 'Su cuenta está inactiva. Contacte al administrador.' };
         }
+        let resolvedFullName = found.fullName;
+        if (found.user.toUpperCase() === 'DDUVAN' && (found.fullName.toUpperCase() === 'DDUVAN' || !found.fullName)) {
+          resolvedFullName = 'Duván';
+        }
         const session: UserSession = {
-          fullName: found.fullName.toUpperCase(),
+          fullName: resolvedFullName,
           user: found.user.toUpperCase(),
           role: found.role,
           token: 'sess_' + Date.now()
@@ -194,9 +198,23 @@ export const AuthService = {
   getSession: (): UserSession | null => {
     try {
       const data = localStorage.getItem(SESSION_KEY);
-      return data ? JSON.parse(data) : null;
+      if (!data) return null;
+      const parsed: UserSession = JSON.parse(data);
+      if (parsed.user?.toUpperCase() === 'DDUVAN' && parsed.fullName?.toUpperCase() === 'DDUVAN') {
+        parsed.fullName = 'Duván';
+        localStorage.setItem(SESSION_KEY, JSON.stringify(parsed));
+      }
+      return parsed;
     } catch {
       return null;
+    }
+  },
+
+  saveSession: (session: UserSession): void => {
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    } catch {
+      // Ignored
     }
   },
 

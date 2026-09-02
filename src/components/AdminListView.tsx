@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { AuthService } from '../services/authService.ts';
 import { UserAccount } from '../types.ts';
-import { Users, Key, ToggleLeft, Trash2 } from 'lucide-react';
+import { formatPersonName } from '../utils/formatters.ts';
+import { Users, Key, ToggleLeft, Trash2, Pencil } from 'lucide-react';
 
 interface AdminListViewProps {
   users: UserAccount[];
@@ -11,6 +12,9 @@ interface AdminListViewProps {
 export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUsers }) => {
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
+
+  const [editingNameUser, setEditingNameUser] = useState<string | null>(null);
+  const [newName, setNewName] = useState('');
 
   const handleToggleStatus = async (u: UserAccount) => {
     if (u.user === 'JTORREGROSA') {
@@ -42,6 +46,27 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
       alert(`Contraseña actualizada para ${editingUser}.`);
       setEditingUser(null);
       setNewPassword('');
+      onRefreshUsers();
+    }
+  };
+
+  const handleOpenNameModal = (u: UserAccount) => {
+    setEditingNameUser(u.user);
+    setNewName(formatPersonName(u.fullName, u.user));
+  };
+
+  const handleSaveName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingNameUser || !newName.trim()) {
+      alert('El nombre no puede estar vacío.');
+      return;
+    }
+    const userToEdit = users.find((u) => u.user === editingNameUser);
+    if (userToEdit) {
+      await AuthService.updateUser({ ...userToEdit, fullName: newName.trim() });
+      alert(`Nombre completo actualizado para ${editingNameUser}.`);
+      setEditingNameUser(null);
+      setNewName('');
       onRefreshUsers();
     }
   };
@@ -95,7 +120,7 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
 
               return (
                 <tr key={u.user} className="hover:bg-slate-50 transition">
-                  <td className="p-3 font-bold text-slate-800 uppercase">{u.fullName}</td>
+                  <td className="p-3 font-bold text-slate-800">{formatPersonName(u.fullName, u.user)}</td>
                   <td className="p-3 font-medium text-slate-600 uppercase">{u.user}</td>
                   <td className={`p-3 font-bold ${roleBadge}`}>{u.role}</td>
                   <td className="p-3">
@@ -107,6 +132,14 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
                   </td>
                   <td className="p-3 text-slate-500">{u.createdAt}</td>
                   <td className="p-3 text-center space-x-2 whitespace-nowrap">
+                    <button
+                      onClick={() => handleOpenNameModal(u)}
+                      className="text-indigo-600 font-bold hover:underline inline-flex items-center gap-1"
+                      title="Editar Nombre Completo"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Nombre
+                    </button>
                     <button
                       onClick={() => handleToggleStatus(u)}
                       className="text-amber-600 font-bold hover:underline inline-flex items-center gap-1"
@@ -170,6 +203,45 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs shadow"
                 >
                   Guardar Clave
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDICIÓN DE NOMBRE COMPLETO */}
+      {editingNameUser && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 space-y-4">
+            <h4 className="font-bold text-sm text-slate-800 uppercase">
+              Editar Nombre para <span className="text-indigo-600">{editingNameUser}</span>
+            </h4>
+            <form onSubmit={handleSaveName} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Nombre Completo:</label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  required
+                  placeholder="Ej: Jhoel Torregrosa"
+                  className="w-full border border-slate-300 p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-600 focus:outline-none"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingNameUser(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-xs shadow"
+                >
+                  Guardar Nombre
                 </button>
               </div>
             </form>
