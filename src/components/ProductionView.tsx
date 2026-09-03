@@ -291,6 +291,12 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     RecordService.saveProductionQualityRecord(updated).catch((err) => {
       console.error('Error updating box record to Firestore:', err);
     });
+    // Actualización inmediata en el estado local para que el Panel en Vivo refleje el avance en tiempo real
+    setRecords((prev) =>
+      prev.some((r) => r.id === updated.id)
+        ? prev.map((r) => (r.id === updated.id ? updated : r))
+        : [updated, ...prev]
+    );
     triggerAutoSaveBadge();
   };
 
@@ -487,9 +493,9 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
   });
 
   // FILTROS GLOBALES: Exclusivo para Administrador (Fecha y Estación). Para usuarios corrientes sin filtros.
+  // Permite visualizar el avance continuo del proceso en tiempo real (EN_PROCESO, PAUSADO, FINALIZADO)
   const liveTableFiltered = roleFilteredRecords.filter((r) => {
-    if (r.status !== 'FINALIZADO') return false;
-    if (!r.machine) return false;
+    if (!r.boxNumber && !r.reportNumber) return false;
     if (session?.role === 'Administrador') {
       if (filterDate && r.date !== filterDate) return false;
       if (filterStation) {
@@ -704,14 +710,22 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={handlePauseBox}
-                  className="bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white border border-amber-500/40 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer"
-                  title="Pausar caja"
-                >
-                  <Pause className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Pausar</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {showAutoSave && (
+                    <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium animate-pulse bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-500/30 shadow-xs">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Guardado automático</span>
+                    </span>
+                  )}
+                  <button
+                    onClick={handlePauseBox}
+                    className="bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white border border-amber-500/40 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                    title="Pausar caja"
+                  >
+                    <Pause className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Pausar</span>
+                  </button>
+                </div>
               </div>
 
               {/* PROGRESS BAR */}
@@ -1479,22 +1493,36 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
                         
                         {/* 3 COLUMNAS SEPARADAS DE PRUEBAS DE CALIDAD */}
                         <td className="p-3 text-center whitespace-nowrap">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${r.leakTest === 'CUMPLE' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                            {r.leakTest || 'CUMPLE'} ({r.leakTestQty || 6})
-                          </span>
+                          {r.leakTest ? (
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${r.leakTest === 'CUMPLE' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                              {r.leakTest} ({r.leakTestQty || 6})
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-[11px]">--</span>
+                          )}
                         </td>
                         <td className="p-3 text-center whitespace-nowrap">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${r.visualInspection === 'CUMPLE' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                            {r.visualInspection || 'CUMPLE'} ({r.visualInspectionQty || 200})
-                          </span>
+                          {r.visualInspection ? (
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${r.visualInspection === 'CUMPLE' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                              {r.visualInspection} ({r.visualInspectionQty || 200})
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-[11px]">--</span>
+                          )}
                         </td>
                         <td className="p-3 text-center whitespace-nowrap">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${r.tearTest === 'CUMPLE' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                            {r.tearTest || 'CUMPLE'} ({r.tearTestQty || 6})
-                          </span>
+                          {r.tearTest ? (
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${r.tearTest === 'CUMPLE' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                              {r.tearTest} ({r.tearTestQty || 6})
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-[11px]">--</span>
+                          )}
                         </td>
 
-                        <td className="p-3 font-bold text-emerald-700 uppercase whitespace-nowrap">{r.approvedBy || 'PHINEAS'}</td>
+                        <td className="p-3 font-bold text-emerald-700 uppercase whitespace-nowrap">
+                          {r.approvedBy || <span className="text-slate-400 font-mono font-normal">--</span>}
+                        </td>
                         <td className="p-3 whitespace-nowrap">
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${

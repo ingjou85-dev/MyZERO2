@@ -311,6 +311,12 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     RecordService.saveMaintenanceRecord(updated).catch((err) => {
       console.error('Error saving report to Firestore:', err);
     });
+    // Actualización inmediata en el estado local para que el Panel en Vivo refleje el avance en tiempo real
+    onUpdateRecords(
+      records.some((r) => r.id === updated.id)
+        ? records.map((r) => (r.id === updated.id ? updated : r))
+        : [updated, ...records]
+    );
     triggerSaveNotification();
   };
 
@@ -571,9 +577,9 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   });
 
   // FILTROS GLOBALES: Exclusivo para Administrador (Fecha, Estación y Máquina). Para usuarios corrientes sin filtros.
+  // Permite visualizar el avance continuo del proceso en tiempo real (EN_PROCESO, PAUSADO, FINALIZADO)
   const liveTableRecords = roleFilteredRecords.filter((r) => {
-    if (r.status !== 'FINALIZADO') return false;
-    if (!r.machine) return false;
+    if (!r.machine && !r.reportNumber) return false;
     if (session?.role === 'Administrador') {
       if (filterDate && r.date !== filterDate) return false;
       if (filterStation) {
@@ -790,14 +796,22 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={handlePauseReport}
-                  className="bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white border border-amber-500/40 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer"
-                  title="Pausar reporte para completarlo más tarde"
-                >
-                  <Pause className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Pausar</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {showAutoSave && (
+                    <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium animate-pulse bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-500/30 shadow-xs">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Guardado automático</span>
+                    </span>
+                  )}
+                  <button
+                    onClick={handlePauseReport}
+                    className="bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white border border-amber-500/40 text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                    title="Pausar reporte para completarlo más tarde"
+                  >
+                    <Pause className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Pausar</span>
+                  </button>
+                </div>
               </div>
 
               {/* PROGRESS BAR */}
