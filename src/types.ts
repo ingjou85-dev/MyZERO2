@@ -41,7 +41,7 @@ export interface MaintenanceRecord {
   solution?: string;
   closingTime?: string;
   solvingTechnician?: string;
-  effectiveSolution?: 'Sí' | 'No';
+  effectiveSolution?: 'Sí' | 'No' | '';
   repairTimeMin?: number;
   totalDowntimeMin?: number;
   currentStep?: number;
@@ -76,11 +76,11 @@ export interface ProductionQualityRecord {
   weightBottom?: number; // PESO VASO INDIVIDUAL
   weightLid?: number; // PESO CAJA PLEGADIZA
   weightTotal?: number; // PESO FINAL CAJA
-  leakTest?: 'CUMPLE' | 'NO_CUMPLE';
+  leakTest?: 'CUMPLE' | 'NO_CUMPLE' | '';
   leakTestQty?: number;
-  visualInspection?: 'CUMPLE' | 'NO_CUMPLE';
+  visualInspection?: 'CUMPLE' | 'NO_CUMPLE' | '';
   visualInspectionQty?: number;
-  tearTest?: 'CUMPLE' | 'NO_CUMPLE';
+  tearTest?: 'CUMPLE' | 'NO_CUMPLE' | '';
   tearTestQty?: number;
   testDetails?: string;
   approval?: 'APROBADO' | 'RECHAZADO' | 'PENDIENTE';

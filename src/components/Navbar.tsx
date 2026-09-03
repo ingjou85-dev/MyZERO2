@@ -1,7 +1,7 @@
 import React from 'react';
 import { UserSession, AppView } from '../types.ts';
 import { CompanyLogo } from './CompanyLogo.tsx';
-import { formatPersonName } from '../utils/formatters.ts';
+import { formatFirstNameUpper } from '../utils/formatters.ts';
 import { LogOut, Menu, Home, Wrench, Layers, ShieldCheck } from 'lucide-react';
 
 interface NavbarProps {
@@ -81,7 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="border-l border-slate-700 pl-2 sm:pl-4 flex items-center space-x-2 sm:space-x-3">
               <div className="text-right max-w-[130px] sm:max-w-none truncate">
                 <p id="navUserName" className="text-[11px] sm:text-xs font-bold text-slate-100 tracking-wide truncate">
-                  {formatPersonName(session.fullName, session.user)}
+                  {formatFirstNameUpper(session.fullName, session.user)}
                 </p>
                 <p id="navUserRole" className="text-[8px] sm:text-[9px] text-emerald-400 font-semibold uppercase">
                   {session.role === 'Administrador' ? 'ADMIN' : 'Operario'}

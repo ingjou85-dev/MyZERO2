@@ -29,11 +29,11 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
 
   const todayDate = getTodayDateString();
   const [date, setDate] = useState(todayDate);
-  const [station, setStation] = useState(MASTER_DATA.stations[0]);
-  const [shift, setShift] = useState(MASTER_DATA.shifts[0]);
-  const [tech, setTech] = useState('');
-  const [aux, setAux] = useState(MASTER_DATA.auxiliaries[0]);
-  const [reference, setReference] = useState('');
+  const [station, setStation] = useState(initialRecord?.station || '');
+  const [shift, setShift] = useState(initialRecord?.shift || '');
+  const [tech, setTech] = useState(initialRecord?.tech || '');
+  const [aux, setAux] = useState(initialRecord?.aux || '');
+  const [reference, setReference] = useState(initialRecord?.reference || '');
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
@@ -41,17 +41,17 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
       const today = getTodayDateString();
       if (initialRecord) {
         setDate(initialRecord.date || today);
-        setStation(initialRecord.station || MASTER_DATA.stations[0]);
-        setShift(initialRecord.shift || MASTER_DATA.shifts[0]);
+        setStation(initialRecord.station || '');
+        setShift(initialRecord.shift || '');
         setTech(initialRecord.tech || '');
-        setAux(initialRecord.aux || MASTER_DATA.auxiliaries[0]);
+        setAux(initialRecord.aux || '');
         setReference(initialRecord.reference || '');
       } else {
         setDate(today);
-        setStation(MASTER_DATA.stations[0]);
-        setShift(MASTER_DATA.shifts[0]);
+        setStation('');
+        setShift('');
         setTech('');
-        setAux(MASTER_DATA.auxiliaries[0]);
+        setAux('');
         setReference('');
       }
       setErrorMsg('');
@@ -64,7 +64,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
     e.preventDefault();
     const effectiveDate = todayDate;
     if (!effectiveDate || !station || !shift || !session?.fullName || !tech || !aux || !reference) {
-      setErrorMsg('Por favor complete todos los campos obligatorios (*).');
+      setErrorMsg('Por favor complete todos los campos obligatorios seleccionando cada opción (*).');
       return;
     }
 
@@ -151,6 +151,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                 required
                 className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-bold bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
               >
+                <option value="">Seleccionar Estación</option>
                 {MASTER_DATA.stations.map((st) => (
                   <option key={st} value={st}>
                     {st}
@@ -169,6 +170,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                 required
                 className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-bold bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
               >
+                <option value="">Seleccionar Turno</option>
                 {MASTER_DATA.shifts.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -201,7 +203,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                 required
                 className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-medium bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
               >
-                <option value="">-- Seleccionar Técnico --</option>
+                <option value="">Seleccionar Técnico</option>
                 {MASTER_DATA.technicians.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -220,6 +222,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                 required
                 className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-medium bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
               >
+                <option value="">Seleccionar Auxiliar</option>
                 {MASTER_DATA.auxiliaries.map((a) => (
                   <option key={a} value={a}>
                     {a}
@@ -238,7 +241,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                 required
                 className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-medium bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
               >
-                <option value="">-- Seleccionar Referencia --</option>
+                <option value="">Seleccionar Referencia</option>
                 {MASTER_DATA.references.map((r) => (
                   <option key={r} value={r}>
                     {r}

@@ -23,15 +23,10 @@ export const MaintenanceSummaryTab: React.FC<MaintenanceSummaryTabProps> = ({ re
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
-  const [selectedStation, setSelectedStation] = useState<string>('');
 
-  // Filtrar registros por fecha (o todos si está vacío) y estación
+  // Filtrar registros por fecha (o todos si está vacío)
   const filteredRecords = records.filter((r) => {
     if (selectedDate && r.date !== selectedDate) return false;
-    if (selectedStation) {
-      const st = r.station || MASTER_DATA.getStationForMachine(r.machine || '') || '';
-      if (st !== selectedStation) return false;
-    }
     return true;
   });
 
@@ -131,24 +126,6 @@ export const MaintenanceSummaryTab: React.FC<MaintenanceSummaryTabProps> = ({ re
               className="border border-slate-300 p-2 rounded-lg text-xs font-bold text-slate-700 focus:ring-2 focus:ring-maint-600 focus:outline-none pl-8"
             />
             <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-          </div>
-
-          {/* FILTRO ESTACIÓN */}
-          <div className="relative">
-            <select
-              id="filterMaintSummaryStation"
-              value={selectedStation}
-              onChange={(e) => setSelectedStation(e.target.value)}
-              className="border border-slate-300 p-2 rounded-lg text-xs font-bold text-slate-700 bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none pl-8"
-            >
-              <option value="">Todas las Estaciones</option>
-              {MASTER_DATA.stations.map((st) => (
-                <option key={st} value={st}>
-                  {st}
-                </option>
-              ))}
-            </select>
-            <Layers className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
           </div>
         </div>
       </div>

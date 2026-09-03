@@ -10,7 +10,7 @@ interface AdminCreateViewProps {
 export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreated }) => {
   const [fullName, setFullName] = useState('');
   const [user, setUser] = useState('');
-  const [role, setRole] = useState<UserRole>('Corriente');
+  const [role, setRole] = useState<UserRole | ''>('');
   const [pass, setPass] = useState('');
   const [passConfirm, setPassConfirm] = useState('');
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -43,6 +43,14 @@ export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreat
     e.preventDefault();
     setAlert(null);
 
+    if (!role) {
+      setAlert({
+        type: 'error',
+        message: 'Por favor seleccione el rol de acceso.'
+      });
+      return;
+    }
+
     if (pass.length < 4) {
       setAlert({
         type: 'error',
@@ -59,7 +67,7 @@ export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreat
       return;
     }
 
-    const res = await AuthService.register(fullName, user, pass, role);
+    const res = await AuthService.register(fullName, user, pass, role as UserRole);
     if (res.success) {
       setAlert({
         type: 'success',
@@ -69,7 +77,7 @@ export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreat
       setUser('');
       setPass('');
       setPassConfirm('');
-      setRole('Corriente');
+      setRole('');
       onAccountCreated();
       setTimeout(() => setAlert(null), 3000);
     } else {
@@ -150,6 +158,7 @@ export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreat
               required
               className="w-full border border-slate-300 p-2.5 rounded-lg text-sm bg-white font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none"
             >
+              <option value="">Seleccionar Rol</option>
               <option value="Corriente">Corriente</option>
               <option value="Administrador">Administrador</option>
             </select>

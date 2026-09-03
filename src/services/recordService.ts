@@ -109,6 +109,17 @@ export const RecordService = {
     }
   },
 
+  bulkDeleteMaintenanceRecords: async (ids: string[]): Promise<void> => {
+    try {
+      await Promise.all(
+        ids.map((id) => deleteDoc(doc(db, MAINT_COLLECTION, id)))
+      );
+    } catch (error) {
+      console.error('Error bulk deleting maintenance records in Firestore:', error);
+      throw error;
+    }
+  },
+
   exportMaintenanceToExcel: (records: MaintenanceRecord[]): void => {
     try {
       const data = records.map((r) => {
@@ -203,6 +214,17 @@ export const RecordService = {
       await deleteDoc(docRef);
     } catch (error) {
       console.error('Error deleting production quality record in Firestore:', error);
+      throw error;
+    }
+  },
+
+  bulkDeleteProductionQualityRecords: async (ids: string[]): Promise<void> => {
+    try {
+      await Promise.all(
+        ids.map((id) => deleteDoc(doc(db, QUALITY_COLLECTION, id)))
+      );
+    } catch (error) {
+      console.error('Error bulk deleting production quality records in Firestore:', error);
       throw error;
     }
   },

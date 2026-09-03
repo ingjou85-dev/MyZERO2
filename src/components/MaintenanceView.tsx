@@ -62,7 +62,8 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   const [solutionFilter, setSolutionFilter] = useState('');
   const [closingTime, setClosingTime] = useState('');
   const [solvingTechnician, setSolvingTechnician] = useState('');
-  const [effectiveSolution, setEffectiveSolution] = useState<'Sí' | 'No'>('Sí');
+  const [effectiveSolution, setEffectiveSolution] = useState<'Sí' | 'No' | ''>('');
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
 
   // Calculated times
   const [arrivalTimeMin, setArrivalTimeMin] = useState<number | undefined>(undefined);
@@ -195,8 +196,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   }, [failureTime, technicianArrivalTime, closingTime]);
 
   const handleStartNewReport = () => {
-    const initialMachine = availableMachines[0] || MASTER_DATA.machines[0];
-    const initialStation = userStation || MASTER_DATA.getStationForMachine(initialMachine) || 'Estación 51';
+    const initialStation = userStation || 'Estación 51';
 
     const newReport: MaintenanceRecord = {
       id: 'rec-' + Date.now(),
@@ -204,10 +204,10 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       module: 'MAINTENANCE',
       date: activeTurn?.date || new Date().toISOString().split('T')[0],
       station: initialStation,
-      shift: activeTurn?.shift || MASTER_DATA.shifts[0],
+      shift: activeTurn?.shift || '',
       operator: session?.fullName || 'Administrador',
-      machine: initialMachine,
-      failureTime: getNowTimeString(),
+      machine: '',
+      failureTime: '',
       currentStep: 1,
       status: 'EN_PROCESO'
     };
@@ -217,8 +217,8 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     setCurrentStep(1);
     setValidationAlert('');
 
-    setMachine(initialMachine);
-    setFailureTime(newReport.failureTime || getNowTimeString());
+    setMachine('');
+    setFailureTime('');
     setTechnicianArrivalTime('');
     setSelectedDefects([]);
     setCustomDefect('');
@@ -227,13 +227,8 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     setCustomSolution('');
     setSolutionFilter('');
     setClosingTime('');
-    setSolvingTechnician(MASTER_DATA.technicians[0]);
-    setEffectiveSolution('Sí');
-
-    RecordService.saveMaintenanceRecord(newReport).catch((err) => {
-      console.error('Error saving new report to Firestore:', err);
-    });
-    triggerSaveNotification();
+    setSolvingTechnician('');
+    setEffectiveSolution('');
   };
 
   const getEffectiveDefect = () => {
@@ -398,8 +393,8 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     const solsList = getEffectiveSolutionsList();
 
     // Validación de campos vacíos en el paso final
-    if (!machine || !failureTime || !technicianArrivalTime || defsList.length === 0 || solsList.length === 0 || !closingTime || !solvingTechnician) {
-      setValidationAlert('Existen campos sin diligenciar. Por favor complete todos los pasos antes de finalizar.');
+    if (!machine || !failureTime || !technicianArrivalTime || defsList.length === 0 || solsList.length === 0 || !closingTime || !solvingTechnician || !effectiveSolution) {
+      setValidationAlert('Existen campos sin diligenciar. Por favor complete todos los pasos (incluyendo mecánico y solución efectiva) antes de finalizar.');
       return;
     }
 
@@ -510,8 +505,8 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     }
 
     setClosingTime(rec.closingTime || '');
-    setSolvingTechnician(rec.solvingTechnician || rec.technician || MASTER_DATA.technicians[0]);
-    setEffectiveSolution(rec.effectiveSolution || 'Sí');
+    setSolvingTechnician(rec.solvingTechnician || rec.technician || '');
+    setEffectiveSolution(rec.effectiveSolution || '');
 
     // Marcar como activo / en proceso en la base de datos
     RecordService.saveMaintenanceRecord({
@@ -539,6 +534,29 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     }
   };
 
+  const handleBulkDeleteMaintenance = async () => {
+    if (session?.role !== 'Administrador') return;
+    if (liveTableRecords.length === 0) return;
+
+    const count = liveTableRecords.length;
+    const confirmMessage = `¿Está seguro de eliminar masivamente los ${count} registro(s) visualizados en este panel en vivo?\n\nEsta acción es irreversible y eliminará los registros de forma definitiva de la base de datos.`;
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsDeletingBulk(true);
+      const idsToDelete = liveTableRecords.map((r) => r.id);
+      await RecordService.bulkDeleteMaintenanceRecords(idsToDelete);
+      onUpdateRecords(records.filter((r) => !idsToDelete.includes(r.id)));
+      setIsDeletingBulk(false);
+    } catch (error) {
+      console.error('Error bulk deleting maintenance records:', error);
+      alert('Ocurrió un error al intentar eliminar los registros.');
+      setIsDeletingBulk(false);
+    }
+  };
+
   // CONTROL DE ROLES (RBAC) PARA EL PANEL EN VIVO:
   // Usuario corriente: solo registros ingresados por él mismo durante su turno
   // Administrador: ve toda la información en tiempo real de todos los usuarios
@@ -550,8 +568,10 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     return recOperator === curName || recOperator === curUser;
   });
 
-  // FILTROS GLOBALES: Por Fecha y Por Estación
+  // FILTROS GLOBALES: Por Fecha y Por Estación (sin borradores o registros vacíos)
   const liveTableRecords = roleFilteredRecords.filter((r) => {
+    if (r.status !== 'FINALIZADO') return false;
+    if (!r.machine) return false;
     if (filterDate && r.date !== filterDate) return false;
     if (filterStation) {
       const recStation = r.station || MASTER_DATA.getStationForMachine(r.machine || '') || '';
@@ -803,9 +823,13 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                       <label className="block text-xs font-bold text-slate-700 uppercase">
                         Máquina ({userStation}) *
                       </label>
-                      {machine && (
+                      {machine ? (
                         <span className="text-[11px] font-bold text-maint-700 bg-maint-50 px-2 py-0.5 rounded border border-maint-200">
                           Seleccionada: {machine}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          Seleccionar
                         </span>
                       )}
                     </div>
@@ -1057,6 +1081,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                         required
                         className="w-full border border-slate-300 p-2.5 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none"
                       >
+                        <option value="">Seleccionar Mecánico</option>
                         {MASTER_DATA.technicians.map((t) => (
                           <option key={t} value={t}>
                             {t}
@@ -1200,16 +1225,29 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                 {liveTableRecords.length} Registros
               </span>
               {session?.role === 'Administrador' && (
-                <button
-                  id="btn-export-excel-maintenance"
-                  type="button"
-                  onClick={() => ExcelExportService.exportMaintenanceToExcel(liveTableRecords)}
-                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                  title="Descargar reporte de mantenimiento en Excel (.xlsx)"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>Descargar Excel</span>
-                </button>
+                <>
+                  <button
+                    id="btn-export-excel-maintenance"
+                    type="button"
+                    onClick={() => ExcelExportService.exportMaintenanceToExcel(liveTableRecords)}
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                    title="Descargar reporte de mantenimiento en Excel (.xlsx)"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Descargar Excel</span>
+                  </button>
+                  <button
+                    id="btn-bulk-delete-maintenance"
+                    type="button"
+                    onClick={handleBulkDeleteMaintenance}
+                    disabled={liveTableRecords.length === 0 || isDeletingBulk}
+                    className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Eliminar masivamente todos los registros visualizados"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Eliminar Registros</span>
+                  </button>
+                </>
               )}
             </div>
           </div>

@@ -2,6 +2,8 @@ import {
   collection,
   doc,
   setDoc,
+  updateDoc,
+  getDoc,
   deleteDoc,
   onSnapshot,
   getDocs,
@@ -117,6 +119,38 @@ export const AuthService = {
     }
   },
 
+  updatePassword: async (username: string, newPass: string): Promise<void> => {
+    try {
+      const normalizedUser = username.trim().toUpperCase();
+      const docRef = doc(db, USERS_COLLECTION, normalizedUser);
+
+      // Sobrescribir de inmediato el campo pass en Firestore invalidando por completo la contraseña anterior
+      try {
+        await updateDoc(docRef, { pass: newPass });
+      } catch {
+        const existing = cachedUsers.find((u) => u.user.toUpperCase() === normalizedUser);
+        if (existing) {
+          await setDoc(docRef, { ...existing, pass: newPass });
+        } else {
+          await setDoc(docRef, { pass: newPass }, { merge: true });
+        }
+      }
+
+      // Actualizar inmediatamente la caché en memoria para descartar cualquier referencia a la clave anterior
+      cachedUsers = cachedUsers.map((u) =>
+        u.user.toUpperCase() === normalizedUser ? { ...u, pass: newPass } : u
+      );
+
+      // Si se cambió la clave del administrador inicial, actualizar también su valor en memoria para inhabilitar '9927'
+      if (normalizedUser === DEFAULT_ADMIN.user) {
+        DEFAULT_ADMIN.pass = newPass;
+      }
+    } catch (error) {
+      console.error('Error updating password in Firestore:', error);
+      throw error;
+    }
+  },
+
   deleteUser: async (username: string): Promise<void> => {
     try {
       const normalizedUser = username.trim().toUpperCase();
@@ -139,46 +173,67 @@ export const AuthService = {
   ): Promise<{ success: boolean; message?: string; session?: UserSession }> => {
     try {
       const normalizedUser = user.trim().toUpperCase();
-      let users = cachedUsers;
 
-      // Fallback check against Firestore if cache is only default
-      if (users.length <= 1) {
-        try {
-          const colRef = collection(db, USERS_COLLECTION);
-          const snap = await getDocs(colRef);
-          if (!snap.empty) {
-            const fetched: UserAccount[] = [];
-            snap.forEach((d) => fetched.push(d.data() as UserAccount));
-            users = fetched;
-            cachedUsers = fetched;
+      // 1. Consultar directamente en Firestore para validar en tiempo real contra la base de datos
+      let targetUser: UserAccount | undefined;
+      try {
+        const docRef = doc(db, USERS_COLLECTION, normalizedUser);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const remoteUser = snap.data() as UserAccount;
+          targetUser = remoteUser;
+          // Actualizar caché
+          cachedUsers = cachedUsers.map((u) =>
+            u.user.toUpperCase() === normalizedUser ? remoteUser : u
+          );
+          if (!cachedUsers.some((u) => u.user.toUpperCase() === normalizedUser)) {
+            cachedUsers.push(remoteUser);
           }
-        } catch {}
+        }
+      } catch (directErr) {
+        console.warn('Firestore direct getDoc failed during login, checking cached users:', directErr);
       }
 
-      const found = users.find(
-        (u) => u.user.toUpperCase() === normalizedUser && u.pass === pass
-      );
+      // 2. Si no se pudo obtener por red, buscar en la lista sincronizada
+      if (!targetUser) {
+        targetUser = cachedUsers.find((u) => u.user.toUpperCase() === normalizedUser);
+      }
 
-      if (found) {
-        if (found.status === 'Inactivo') {
+      // 3. Si el usuario existe, validar estrictamente contra su contraseña actual
+      if (targetUser) {
+        if (targetUser.pass !== pass) {
+          // La contraseña anterior o incorrecta queda inmediatamente inhabilitada
+          return { success: false, message: 'Credenciales inválidas. Verifique usuario y contraseña.' };
+        }
+
+        if (targetUser.status === 'Inactivo') {
           return { success: false, message: 'Su cuenta está inactiva. Contacte al administrador.' };
         }
-        let resolvedFullName = found.fullName;
-        if (found.user.toUpperCase() === 'DDUVAN' && (found.fullName.toUpperCase() === 'DDUVAN' || !found.fullName)) {
+
+        let resolvedFullName = targetUser.fullName;
+        if (
+          targetUser.user.toUpperCase() === 'DDUVAN' &&
+          (targetUser.fullName.toUpperCase() === 'DDUVAN' || !targetUser.fullName)
+        ) {
           resolvedFullName = 'Duván';
         }
+
         const session: UserSession = {
           fullName: resolvedFullName,
-          user: found.user.toUpperCase(),
-          role: found.role,
+          user: targetUser.user.toUpperCase(),
+          role: targetUser.role,
           token: 'sess_' + Date.now()
         };
         localStorage.setItem(SESSION_KEY, JSON.stringify(session));
         return { success: true, session };
       }
 
-      // Allow default credentials fallback if network or first boot
-      if (normalizedUser === DEFAULT_ADMIN.user && pass === DEFAULT_ADMIN.pass) {
+      // 4. Fallback excepcional únicamente si la base de datos aún no ha sido poblada
+      if (
+        cachedUsers.length <= 1 &&
+        normalizedUser === DEFAULT_ADMIN.user &&
+        pass === DEFAULT_ADMIN.pass
+      ) {
         const session: UserSession = {
           fullName: DEFAULT_ADMIN.fullName,
           user: DEFAULT_ADMIN.user,

@@ -67,17 +67,18 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
   const [weightTotal, setWeightTotal] = useState<string>('');
 
   // Paso 3: Pruebas de Calidad (3 pruebas) y Cantidades Editables
-  const [leakTest, setLeakTest] = useState<'CUMPLE' | 'NO_CUMPLE'>('CUMPLE');
+  const [leakTest, setLeakTest] = useState<'CUMPLE' | 'NO_CUMPLE' | ''>('');
   const [leakTestQty, setLeakTestQty] = useState<number>(6);
-  const [visualInspection, setVisualInspection] = useState<'CUMPLE' | 'NO_CUMPLE'>('CUMPLE');
+  const [visualInspection, setVisualInspection] = useState<'CUMPLE' | 'NO_CUMPLE' | ''>('');
   const [visualInspectionQty, setVisualInspectionQty] = useState<number>(200);
-  const [tearTest, setTearTest] = useState<'CUMPLE' | 'NO_CUMPLE'>('CUMPLE');
+  const [tearTest, setTearTest] = useState<'CUMPLE' | 'NO_CUMPLE' | ''>('');
   const [tearTestQty, setTearTestQty] = useState<number>(6);
   const [isEditingQty, setIsEditingQty] = useState<boolean>(false);
 
   // Paso 4: Aprobado por y Hora de Inspección
-  const [approvedBy, setApprovedBy] = useState<'PHINEAS' | 'ALEXANDRA' | string>('PHINEAS');
+  const [approvedBy, setApprovedBy] = useState<string>('');
   const [inspectionTime, setInspectionTime] = useState<string>('');
+  const [isDeletingBulk, setIsDeletingBulk] = useState<boolean>(false);
 
   // Global Filters for Live Panel (Solo 2: Fecha y Estación)
   const [filterDate, setFilterDate] = useState('');
@@ -199,12 +200,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
 
   const handleStartNewBox = () => {
     const nextBoxNum = nextUserBoxNumber;
-
-    const initialMachine = availableMachines[0] || MASTER_DATA.machines[0];
-    const initialStation = userStation || MASTER_DATA.getStationForMachine(initialMachine) || 'Estación 51';
-    const currentTime = getNowTimeString();
-
-    const fullTestDetails = `PRUEBA DE GOTEO (${leakTestQty}): ${leakTest} | INSPECCIÓN VISUAL (${visualInspectionQty}): ${visualInspection} | PRUEBA DE RASGADO (${tearTestQty}): ${tearTest}`;
+    const initialStation = userStation || 'Estación 51';
 
     const newRec: ProductionQualityRecord = {
       id: 'pqr-' + Date.now(),
@@ -212,22 +208,22 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
       boxNumber: nextBoxNum,
       station: initialStation,
       date: activeTurn?.date || new Date().toISOString().split('T')[0],
-      shift: activeTurn?.shift || MASTER_DATA.shifts[0],
-      machine: initialMachine,
-      reference: activeTurn?.reference || MASTER_DATA.references[0],
+      shift: activeTurn?.shift || '',
+      machine: '',
+      reference: activeTurn?.reference || '',
       packer: (session?.fullName || activeTurn?.packer || 'Administrador').toUpperCase(),
       tech: activeTurn?.tech || '',
       aux: activeTurn?.aux || '',
-      leakTest: 'CUMPLE',
+      leakTest: '',
       leakTestQty: 6,
-      visualInspection: 'CUMPLE',
+      visualInspection: '',
       visualInspectionQty: 200,
-      tearTest: 'CUMPLE',
+      tearTest: '',
       tearTestQty: 6,
       approval: 'APROBADO',
-      approvedBy: 'PHINEAS',
-      inspectionTime: currentTime,
-      testDetails: fullTestDetails,
+      approvedBy: '',
+      inspectionTime: '',
+      testDetails: '',
       currentStep: 1,
       status: 'EN_PROCESO'
     };
@@ -240,24 +236,19 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
 
     setBoxNumber(nextBoxNum);
     setStation(initialStation);
-    setMachine(initialMachine);
-    setReference(newRec.reference);
+    setMachine('');
+    setReference(activeTurn?.reference || '');
     setWeightBottom('');
     setWeightLid('');
     setWeightTotal('');
-    setLeakTest('CUMPLE');
+    setLeakTest('');
     setLeakTestQty(6);
-    setVisualInspection('CUMPLE');
+    setVisualInspection('');
     setVisualInspectionQty(200);
-    setTearTest('CUMPLE');
+    setTearTest('');
     setTearTestQty(6);
-    setApprovedBy('PHINEAS');
-    setInspectionTime(currentTime);
-
-    RecordService.saveProductionQualityRecord(newRec).catch((err) => {
-      console.error('Error saving new box record to Firestore:', err);
-    });
-    triggerAutoSaveBadge();
+    setApprovedBy('');
+    setInspectionTime('');
   };
 
   const getFullTestDetailsString = () => {
@@ -305,8 +296,16 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
 
   const handleNextStep = () => {
     setValidationAlert('');
+    if (currentStep === 1 && !machine) {
+      setValidationAlert('Por favor seleccione una máquina antes de continuar.');
+      return;
+    }
     if (currentStep === 2 && (!weightBottom || !weightLid || !weightTotal)) {
       setValidationAlert('Por favor ingrese o seleccione los valores de control de peso (Vaso individual, Caja plegadiza y Final caja).');
+      return;
+    }
+    if (currentStep === 3 && (!leakTest || !visualInspection || !tearTest)) {
+      setValidationAlert('Por favor seleccione el resultado (CUMPLE o NO CUMPLE) para cada una de las pruebas de calidad.');
       return;
     }
 
@@ -331,8 +330,16 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
 
   const handleFinalizeBox = () => {
     setValidationAlert('');
+    if (!machine) {
+      setValidationAlert('Por favor seleccione la máquina.');
+      return;
+    }
     if (!weightBottom || !weightLid || !weightTotal) {
       setValidationAlert('Faltan valores de peso requeridos (Vaso Individual, Caja Plegadiza y Final Caja).');
+      return;
+    }
+    if (!leakTest || !visualInspection || !tearTest) {
+      setValidationAlert('Por favor complete las 3 pruebas de calidad seleccionando CUMPLE o NO CUMPLE.');
       return;
     }
     if (!approvedBy) {
@@ -410,13 +417,13 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     setWeightBottom(rec.weightBottom !== undefined ? String(rec.weightBottom) : '');
     setWeightLid(rec.weightLid !== undefined ? String(rec.weightLid) : '');
     setWeightTotal(rec.weightTotal !== undefined ? String(rec.weightTotal) : '');
-    setLeakTest(rec.leakTest || 'CUMPLE');
+    setLeakTest(rec.leakTest || '');
     setLeakTestQty(rec.leakTestQty || 6);
-    setVisualInspection(rec.visualInspection || 'CUMPLE');
+    setVisualInspection(rec.visualInspection || '');
     setVisualInspectionQty(rec.visualInspectionQty || 200);
-    setTearTest(rec.tearTest || 'CUMPLE');
+    setTearTest(rec.tearTest || '');
     setTearTestQty(rec.tearTestQty || 6);
-    setApprovedBy((rec.approvedBy as 'PHINEAS' | 'ALEXANDRA') || 'PHINEAS');
+    setApprovedBy(rec.approvedBy || '');
     setInspectionTime(rec.inspectionTime || getNowTimeString());
 
     // Marcar como activo / en proceso en la base de datos
@@ -445,6 +452,29 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     }
   };
 
+  const handleBulkDeleteProduction = async () => {
+    if (session?.role !== 'Administrador') return;
+    if (sequentialRecords.length === 0) return;
+
+    const count = sequentialRecords.length;
+    const confirmMessage = `¿Está seguro de eliminar masivamente los ${count} registro(s) visualizados en este panel en vivo?\n\nEsta acción es irreversible y eliminará los registros de forma definitiva de la base de datos.`;
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsDeletingBulk(true);
+      const idsToDelete = sequentialRecords.map((r) => r.id);
+      await RecordService.bulkDeleteProductionQualityRecords(idsToDelete);
+      setRecords((prev) => prev.filter((r) => !idsToDelete.includes(r.id)));
+      setIsDeletingBulk(false);
+    } catch (error) {
+      console.error('Error bulk deleting production records:', error);
+      alert('Ocurrió un error al intentar eliminar los registros.');
+      setIsDeletingBulk(false);
+    }
+  };
+
   // CONTROL DE ROLES (RBAC) PARA EL PANEL EN VIVO:
   // Para usuarios corrientes: solo registros ingresados por ellos mismos durante el turno
   // Para Administrador: toda la información en tiempo real
@@ -456,8 +486,10 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     return recPacker === curName || recPacker === curUser;
   });
 
-  // FILTROS GLOBALES: Por Fecha y Por Estación
+  // FILTROS GLOBALES: Por Fecha y Por Estación (sin borradores o registros vacíos)
   const liveTableFiltered = roleFilteredRecords.filter((r) => {
+    if (r.status !== 'FINALIZADO') return false;
+    if (!r.machine) return false;
     if (filterDate && r.date !== filterDate) return false;
     if (filterStation) {
       const recStation = r.station || MASTER_DATA.getStationForMachine(r.machine || '') || '';
@@ -712,6 +744,47 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
                       <span className="bg-emerald-600 text-white font-mono font-bold px-4 py-2 rounded-xl text-lg shadow-md">
                         #{boxNumber}
                       </span>
+                    </div>
+
+                    {/* SELECCIÓN DE MÁQUINA */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-xs font-bold text-slate-700 uppercase">
+                          Máquina ({userStation}) *
+                        </label>
+                        {machine ? (
+                          <span className="text-[11px] font-bold text-prod-700 bg-prod-50 px-2 py-0.5 rounded border border-prod-200">
+                            Seleccionada: {machine}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            Seleccionar
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {availableMachines.map((m) => {
+                          const isSelected = machine === m;
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              id={`chip-prod-machine-${m}`}
+                              onClick={() => {
+                                setMachine(m);
+                                setValidationAlert('');
+                              }}
+                              className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                                isSelected
+                                  ? 'bg-prod-600 text-white border-prod-600 shadow-md ring-2 ring-prod-400/40 scale-105'
+                                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800'
+                              }`}
+                            >
+                              {m}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -1056,9 +1129,16 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
                   <div className="space-y-4">
                     {/* APROBADO POR */}
                     <div className="space-y-2">
-                      <label className="block text-xs font-bold text-slate-700 uppercase">
-                        Aprobado por *
-                      </label>
+                      <div className="flex justify-between items-center">
+                        <label className="block text-xs font-bold text-slate-700 uppercase">
+                          Aprobado por *
+                        </label>
+                        {!approvedBy && (
+                          <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            Seleccionar
+                          </span>
+                        )}
+                      </div>
                       <div className="grid grid-cols-2 gap-2.5">
                         {MASTER_DATA.approvers.map((app) => {
                           const isSelected = approvedBy === app;
@@ -1304,16 +1384,29 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
                 {sequentialRecords.length} Cajas ({session?.role === 'Administrador' ? 'Vista Global' : 'Mis Cajas'})
               </span>
               {session?.role === 'Administrador' && (
-                <button
-                  id="btn-export-excel-production"
-                  type="button"
-                  onClick={() => ExcelExportService.exportProductionToExcel(sequentialRecords)}
-                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                  title="Descargar reporte de producción en Excel (.xlsx)"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>Descargar Excel</span>
-                </button>
+                <>
+                  <button
+                    id="btn-export-excel-production"
+                    type="button"
+                    onClick={() => ExcelExportService.exportProductionToExcel(sequentialRecords)}
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                    title="Descargar archivo en Excel (.xlsx)"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Descargar archivo en Excel</span>
+                  </button>
+                  <button
+                    id="btn-bulk-delete-production"
+                    type="button"
+                    onClick={handleBulkDeleteProduction}
+                    disabled={sequentialRecords.length === 0 || isDeletingBulk}
+                    className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Eliminar masivamente todos los registros visualizados"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Eliminar Registros</span>
+                  </button>
+                </>
               )}
             </div>
           </div>
