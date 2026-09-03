@@ -25,7 +25,8 @@ import {
   Lock,
   Calendar,
   Layers,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Cog
 } from 'lucide-react';
 
 interface MaintenanceViewProps {
@@ -70,9 +71,10 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   const [repairTimeMin, setRepairTimeMin] = useState<number | undefined>(undefined);
   const [totalDowntimeMin, setTotalDowntimeMin] = useState<number | undefined>(undefined);
 
-  // Global Filters for Panel: SOLO 2 FILTROS PRINCIPALES (Fecha y Estación)
+  // Global Filters for Live Panel (Administrador: Fecha, Estación y Máquina)
   const [filterDate, setFilterDate] = useState('');
   const [filterStation, setFilterStation] = useState('');
+  const [filterMachine, setFilterMachine] = useState('');
 
   // Máquinas filtradas dinámicamente por la estación del turno activo (o todas para Administrador sin turno)
   const userStation = activeTurn?.station || (session?.role === 'Administrador' ? 'Estación 51' : 'Estación 51');
@@ -568,14 +570,17 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     return recOperator === curName || recOperator === curUser;
   });
 
-  // FILTROS GLOBALES: Por Fecha y Por Estación (sin borradores o registros vacíos)
+  // FILTROS GLOBALES: Exclusivo para Administrador (Fecha, Estación y Máquina). Para usuarios corrientes sin filtros.
   const liveTableRecords = roleFilteredRecords.filter((r) => {
     if (r.status !== 'FINALIZADO') return false;
     if (!r.machine) return false;
-    if (filterDate && r.date !== filterDate) return false;
-    if (filterStation) {
-      const recStation = r.station || MASTER_DATA.getStationForMachine(r.machine || '') || '';
-      if (recStation !== filterStation) return false;
+    if (session?.role === 'Administrador') {
+      if (filterDate && r.date !== filterDate) return false;
+      if (filterStation) {
+        const recStation = r.station || MASTER_DATA.getStationForMachine(r.machine || '') || '';
+        if (recStation !== filterStation) return false;
+      }
+      if (filterMachine && r.machine !== filterMachine) return false;
     }
     return true;
   });
@@ -1165,192 +1170,308 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       {/* TAB 2: PANEL EN VIVO (MANTENIMIENTO) */}
       {activeTab === 'LIVE' && (
         <div className="space-y-4">
-          {/* FILTROS GLOBALES: SOLO DOS FILTROS PRINCIPALES (POR FECHA Y POR ESTACIÓN) */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full sm:w-auto">
-              {/* FILTRO 1: POR FECHA */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Filtrar por Fecha
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    id="filterMaintDate"
-                    value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
-                    className="border border-slate-300 p-2 rounded-lg text-xs font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none pl-8"
-                  />
-                  <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+          {/* BARRA SUPERIOR DEL PANEL EN VIVO */}
+          {session?.role === 'Administrador' ? (
+            <div className="bg-white px-3.5 py-2 rounded-2xl border border-slate-200 shadow-xs flex flex-row items-center justify-between gap-3">
+              {/* FILTROS A LA IZQUIERDA */}
+              <div className="flex flex-wrap items-end gap-3">
+                {/* FILTRO 1: POR FECHA */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Filtrar por Fecha
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      id="filterMaintDate"
+                      value={filterDate}
+                      onChange={(e) => setFilterDate(e.target.value)}
+                      className="h-9 border border-slate-300 px-2.5 rounded-xl text-xs font-medium focus:ring-2 focus:ring-maint-600 focus:outline-none pl-8 bg-white"
+                    />
+                    <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                  </div>
                 </div>
+
+                {/* FILTRO 2: POR ESTACIÓN */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Filtrar por Estación
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="filterMaintStation"
+                      value={filterStation}
+                      onChange={(e) => {
+                        const newStation = e.target.value;
+                        setFilterStation(newStation);
+                        if (filterMachine && newStation) {
+                          const validMachines = MASTER_DATA.getMachinesForStation(newStation);
+                          if (!validMachines.includes(filterMachine)) {
+                            setFilterMachine('');
+                          }
+                        }
+                      }}
+                      className="h-9 border border-slate-300 px-2.5 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none pl-8 pr-7 min-w-[165px]"
+                    >
+                      <option value="">Todas las Estaciones</option>
+                      {MASTER_DATA.stations.map((st) => (
+                        <option key={st} value={st}>
+                          {st}
+                        </option>
+                      ))}
+                    </select>
+                    <Layers className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* FILTRO 3: POR MÁQUINA (EXCLUSIVO ADMINISTRADOR) */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Filtrar por Máquina
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="filterMaintMachine"
+                      value={filterMachine}
+                      onChange={(e) => setFilterMachine(e.target.value)}
+                      className="h-9 border border-slate-300 px-2.5 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none pl-8 pr-7 min-w-[155px]"
+                    >
+                      <option value="">Todas las Máquinas</option>
+                      {(filterStation ? MASTER_DATA.getMachinesForStation(filterStation) : MASTER_DATA.machines).map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                    <Cog className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                  </div>
+                </div>
+
+                {(filterDate || filterStation || filterMachine) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterDate('');
+                      setFilterStation('');
+                      setFilterMachine('');
+                    }}
+                    className="h-9 px-2 text-xs text-maint-600 hover:text-maint-800 hover:underline font-bold flex items-center transition cursor-pointer"
+                  >
+                    Limpiar Filtros
+                  </button>
+                )}
               </div>
 
-              {/* FILTRO 2: POR ESTACIÓN */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Filtrar por Estación
-                </label>
-                <div className="relative">
-                  <select
-                    id="filterMaintStation"
-                    value={filterStation}
-                    onChange={(e) => setFilterStation(e.target.value)}
-                    className="border border-slate-300 p-2 rounded-lg text-xs font-medium bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none pl-8 min-w-[170px]"
-                  >
-                    <option value="">Todas las Estaciones</option>
-                    {MASTER_DATA.stations.map((st) => (
-                      <option key={st} value={st}>
-                        {st}
-                      </option>
-                    ))}
-                  </select>
-                  <Layers className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                </div>
+              {/* BLOQUE DE CONTROLES EN EL CUADRO ROJO (UNO DEBAJO DE OTRO) */}
+              <div className="flex flex-col items-center gap-1 shrink-0">
+                {/* 1. CONTADOR DE REGISTROS */}
+                <span className="h-6 px-2.5 inline-flex items-center justify-center text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-md border border-slate-200 shadow-2xs whitespace-nowrap">
+                  {liveTableRecords.length} Registros
+                </span>
+
+                {/* 2. BOTÓN DESCARGAR EXCEL */}
+                <button
+                  id="btn-export-excel-maintenance"
+                  type="button"
+                  onClick={() => ExcelExportService.exportMaintenanceToExcel(liveTableRecords)}
+                  className="h-6 px-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-medium rounded-md text-[10px] flex items-center gap-1.5 shadow-2xs transition cursor-pointer whitespace-nowrap"
+                  title="Descargar reporte de mantenimiento en Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Descargar Excel</span>
+                </button>
+
+                {/* 3. ÍCONO COMPACTO DE PAPELERA / ELIMINAR REGISTROS */}
+                <button
+                  id="btn-bulk-delete-maintenance"
+                  type="button"
+                  onClick={handleBulkDeleteMaintenance}
+                  disabled={liveTableRecords.length === 0 || isDeletingBulk}
+                  className="h-6 w-6 bg-rose-600 hover:bg-rose-700 text-white rounded-md flex items-center justify-center shadow-2xs transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Eliminar registros visualizados"
+                  aria-label="Eliminar registros visualizados"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
-
-            <div className="flex flex-wrap items-center gap-2 self-end sm:self-center">
-              {(filterDate || filterStation) && (
-                <button
-                  onClick={() => {
-                    setFilterDate('');
-                    setFilterStation('');
-                  }}
-                  className="text-xs text-maint-600 hover:underline font-bold px-2 py-1"
-                >
-                  Limpiar Filtros
-                </button>
-              )}
-              <span className="text-xs bg-slate-100 text-slate-700 font-bold px-3 py-1.5 rounded-full border border-slate-200">
+          ) : (
+            /* VISTA PARA USUARIOS CORRIENTES: SIN OPCIONES DE FILTRADO */
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Mis Registros de Mantenimiento</h3>
+                <p className="text-xs text-slate-500">Eventos de mantenimiento completados durante tu turno de trabajo</p>
+              </div>
+              <span className="h-8 px-2.5 inline-flex items-center justify-center text-[11px] bg-slate-100 text-slate-700 font-medium rounded-lg border border-slate-200 whitespace-nowrap">
                 {liveTableRecords.length} Registros
               </span>
-              {session?.role === 'Administrador' && (
-                <>
-                  <button
-                    id="btn-export-excel-maintenance"
-                    type="button"
-                    onClick={() => ExcelExportService.exportMaintenanceToExcel(liveTableRecords)}
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                    title="Descargar reporte de mantenimiento en Excel (.xlsx)"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Descargar Excel</span>
-                  </button>
-                  <button
-                    id="btn-bulk-delete-maintenance"
-                    type="button"
-                    onClick={handleBulkDeleteMaintenance}
-                    disabled={liveTableRecords.length === 0 || isDeletingBulk}
-                    className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Eliminar masivamente todos los registros visualizados"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Eliminar Registros</span>
-                  </button>
-                </>
-              )}
             </div>
-          </div>
+          )}
 
           {/* TABLA EN VIVO */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-wider font-bold">
                   <tr>
-                    <th className="p-3">REPORTE</th>
-                    <th className="p-3">FECHA</th>
-                    <th className="p-3">ESTACIÓN</th>
-                    <th className="p-3">MÁQUINA</th>
-                    <th className="p-3">HORA DE PARADA</th>
-                    <th className="p-3">DEFECTO</th>
-                    <th className="p-3">HORA DE LLEGADA DEL MECÁNICO</th>
-                    <th className="p-3">SOLUCIÓN</th>
-                    <th className="p-3">HORA FINAL DE SOLUCIÓN</th>
-                    <th className="p-3">MECÁNICO</th>
-                    <th className="p-3 text-center">EFECTIVA</th>
-                    <th className="p-3">ESTADO</th>
-                    {session?.role === 'Administrador' && <th className="p-3 text-center">ACCIONES</th>}
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      USUARIO
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      ESTACIÓN
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      TURNO
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      FECHA
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      MÁQUINA
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      HORA DE<br />PARADA
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      DEFECTO
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      SOLUCIÓN
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      HORA LLEGADA<br />DEL TÉCNICO
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      HORA FINAL<br />DE SOLUCIÓN
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      MECÁNICO
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      EFECTIVA
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      ESTADO
+                    </th>
+                    <th style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'normal', lineHeight: 1.1, padding: '4px 6px' }}>
+                      ACCIONES
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {liveTableRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={session?.role === 'Administrador' ? 13 : 12} className="p-8 text-center text-slate-400">
+                      <td colSpan={14} className="p-8 text-center text-slate-400">
                         No hay reportes de mantenimiento para los filtros seleccionados.
                       </td>
                     </tr>
                   ) : (
-                    liveTableRecords.map((r) => (
-                      <tr key={r.id} className="hover:bg-slate-50 transition">
-                        {/* 1. REPORTE */}
-                        <td className="p-3 font-mono font-bold text-slate-900">{r.reportNumber}</td>
-                        {/* 2. FECHA */}
-                        <td className="p-3 font-medium text-slate-600">{r.date}</td>
-                        {/* 3. ESTACIÓN */}
-                        <td className="p-3 font-semibold text-slate-800">
-                          {r.station || MASTER_DATA.getStationForMachine(r.machine || '') || 'Estación'}
-                        </td>
-                        {/* 4. MÁQUINA */}
-                        <td className="p-3 font-bold text-maint-700 bg-maint-50/50">Máq. {r.machine}</td>
-                        {/* 5. HORA DE PARADA */}
-                        <td className="p-3 font-mono text-slate-700">{r.failureTime || '--'}</td>
-                        {/* 6. DEFECTO */}
-                        <td className="p-3 max-w-[150px] truncate text-slate-700" title={r.defect}>
-                          {r.defect || '--'}
-                        </td>
-                        {/* 7. HORA DE LLEGADA DEL MECÁNICO */}
-                        <td className="p-3 font-mono text-slate-700">{r.technicianArrivalTime || '--'}</td>
-                        {/* 8. SOLUCIÓN */}
-                        <td className="p-3 max-w-[150px] truncate text-slate-700" title={r.solution}>
-                          {r.solution || '--'}
-                        </td>
-                        {/* 9. HORA FINAL DE SOLUCIÓN */}
-                        <td className="p-3 font-mono text-slate-700">{r.closingTime || '--'}</td>
-                        {/* 10. MECÁNICO */}
-                        <td className="p-3 font-semibold text-slate-800">{r.solvingTechnician || r.technician || '--'}</td>
-                        {/* 11. EFECTIVA */}
-                        <td className="p-3 text-center">
-                          {r.effectiveSolution === 'Sí' ? (
-                            <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                              Sí
-                            </span>
-                          ) : r.effectiveSolution === 'No' ? (
-                            <span className="text-rose-700 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                              No
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-mono">--</span>
-                          )}
-                        </td>
-                        {/* 12. ESTADO */}
-                        <td className="p-3">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              r.status === 'FINALIZADO'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : r.status === 'PAUSADO'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-blue-100 text-blue-800'
-                            }`}
-                          >
-                            {r.status}
-                          </span>
-                        </td>
-                        {/* 13. ACCIONES */}
-                        {session?.role === 'Administrador' && (
-                          <td className="p-3 text-center">
-                            <button
-                              onClick={() => handleDeleteReport(r.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 transition"
-                              title="Eliminar reporte (Solo Administrador)"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                    liveTableRecords.map((r) => {
+                      const firstName = (r.operator || 'Usuario').trim().split(/\s+/)[0] || 'Usuario';
+                      return (
+                        <tr key={r.id} className="hover:bg-slate-50 transition">
+                          {/* 1) USUARIO (mostrando el primer nombre) */}
+                          <td className="p-2 text-center font-semibold text-slate-800 whitespace-nowrap">
+                            {firstName}
                           </td>
-                        )}
-                      </tr>
-                    ))
+
+                          {/* 2) ESTACIÓN */}
+                          <td className="p-2 text-center font-medium text-slate-700 whitespace-nowrap">
+                            {r.station || MASTER_DATA.getStationForMachine(r.machine || '') || 'Estación'}
+                          </td>
+
+                          {/* 3) TURNO */}
+                          <td className="p-2 text-center font-medium text-slate-700 whitespace-nowrap">
+                            {r.shift || '--'}
+                          </td>
+
+                          {/* 4) FECHA */}
+                          <td className="p-2 text-center font-medium text-slate-600 whitespace-nowrap">
+                            {r.date}
+                          </td>
+
+                          {/* 5) MÁQUINA */}
+                          <td className="p-2 text-center font-bold text-maint-700 bg-maint-50/50 whitespace-nowrap">
+                            {r.machine ? `Máq. ${r.machine}` : '--'}
+                          </td>
+
+                          {/* 6) HORA DE PARADA */}
+                          <td className="p-2 text-center font-mono text-slate-700 whitespace-nowrap">
+                            {r.failureTime || '--'}
+                          </td>
+
+                          {/* 7) DEFECTO */}
+                          <td className="p-2 text-center max-w-[140px] truncate text-slate-700" title={r.defect}>
+                            {r.defect || '--'}
+                          </td>
+
+                          {/* 8) SOLUCIÓN */}
+                          <td className="p-2 text-center max-w-[140px] truncate text-slate-700" title={r.solution}>
+                            {r.solution || '--'}
+                          </td>
+
+                          {/* 9) HORA DE LLEGADA DEL MECÁNICO */}
+                          <td className="p-2 text-center font-mono text-slate-700 whitespace-nowrap">
+                            {r.technicianArrivalTime || '--'}
+                          </td>
+
+                          {/* 10) HORA FINAL DE SOLUCIÓN */}
+                          <td className="p-2 text-center font-mono text-slate-700 whitespace-nowrap">
+                            {r.closingTime || '--'}
+                          </td>
+
+                          {/* 11) MECÁNICO */}
+                          <td className="p-2 text-center font-semibold text-slate-800 whitespace-nowrap">
+                            {r.solvingTechnician || r.technician || '--'}
+                          </td>
+
+                          {/* 12) EFECTIVA */}
+                          <td className="p-2 text-center whitespace-nowrap">
+                            {r.effectiveSolution === 'Sí' ? (
+                              <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
+                                Sí
+                              </span>
+                            ) : r.effectiveSolution === 'No' ? (
+                              <span className="text-rose-700 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200 text-[11px]">
+                                No
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-mono text-[11px]">--</span>
+                            )}
+                          </td>
+
+                          {/* 13) ESTADO */}
+                          <td className="p-2 text-center whitespace-nowrap">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                r.status === 'FINALIZADO'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : r.status === 'PAUSADO'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}
+                            >
+                              {r.status}
+                            </span>
+                          </td>
+
+                          {/* 14) ACCIONES */}
+                          <td className="p-2 text-center whitespace-nowrap">
+                            {session?.role === 'Administrador' ? (
+                              <button
+                                onClick={() => handleDeleteReport(r.id)}
+                                className="p-1 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                                title="Eliminar reporte (Solo Administrador)"
+                              >
+                                <Trash2 className="w-4 h-4 inline" />
+                              </button>
+                            ) : (
+                              <span className="text-slate-300 font-mono">--</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

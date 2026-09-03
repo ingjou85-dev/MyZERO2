@@ -486,14 +486,16 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     return recPacker === curName || recPacker === curUser;
   });
 
-  // FILTROS GLOBALES: Por Fecha y Por Estación (sin borradores o registros vacíos)
+  // FILTROS GLOBALES: Exclusivo para Administrador (Fecha y Estación). Para usuarios corrientes sin filtros.
   const liveTableFiltered = roleFilteredRecords.filter((r) => {
     if (r.status !== 'FINALIZADO') return false;
     if (!r.machine) return false;
-    if (filterDate && r.date !== filterDate) return false;
-    if (filterStation) {
-      const recStation = r.station || MASTER_DATA.getStationForMachine(r.machine || '') || '';
-      if (recStation !== filterStation) return false;
+    if (session?.role === 'Administrador') {
+      if (filterDate && r.date !== filterDate) return false;
+      if (filterStation) {
+        const recStation = r.station || MASTER_DATA.getStationForMachine(r.machine || '') || '';
+        if (recStation !== filterStation) return false;
+      }
     }
     return true;
   });
@@ -1326,90 +1328,103 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
       {/* TAB 2: PANEL EN VIVO (ORDEN SECUENCIAL ASCENDENTE: Caja #1, #2, #3...) */}
       {activeTab === 'LIVE' && (
         <div className="space-y-4">
-          {/* FILTROS GLOBALES: SOLO DOS (FECHA Y ESTACIÓN) */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full sm:w-auto">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Filtrar por Fecha
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    id="filterProdDate"
-                    value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
-                    className="border border-slate-300 p-2 rounded-lg text-xs font-medium focus:ring-2 focus:ring-prod-600 focus:outline-none pl-8"
-                  />
-                  <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+          {/* BARRA SUPERIOR DEL PANEL EN VIVO */}
+          {session?.role === 'Administrador' ? (
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-end justify-between gap-4">
+              {/* FILTROS A LA IZQUIERDA */}
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Filtrar por Fecha
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      id="filterProdDate"
+                      value={filterDate}
+                      onChange={(e) => setFilterDate(e.target.value)}
+                      className="h-9 border border-slate-300 px-2.5 rounded-xl text-xs font-medium focus:ring-2 focus:ring-prod-600 focus:outline-none pl-8 bg-white"
+                    />
+                    <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Filtrar por Estación
-                </label>
-                <div className="relative">
-                  <select
-                    id="filterProdStation"
-                    value={filterStation}
-                    onChange={(e) => setFilterStation(e.target.value)}
-                    className="border border-slate-300 p-2 rounded-lg text-xs font-medium bg-white focus:ring-2 focus:ring-prod-600 focus:outline-none pl-8 min-w-[170px]"
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Filtrar por Estación
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="filterProdStation"
+                      value={filterStation}
+                      onChange={(e) => setFilterStation(e.target.value)}
+                      className="h-9 border border-slate-300 px-2.5 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-prod-600 focus:outline-none pl-8 pr-7 min-w-[170px]"
+                    >
+                      <option value="">Todas las Estaciones</option>
+                      {MASTER_DATA.stations.map((st) => (
+                        <option key={st} value={st}>
+                          {st}
+                        </option>
+                      ))}
+                    </select>
+                    <Layers className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                  </div>
+                </div>
+
+                {(filterDate || filterStation) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterDate('');
+                      setFilterStation('');
+                    }}
+                    className="h-9 px-2 text-xs text-prod-600 hover:text-prod-800 hover:underline font-bold flex items-center transition cursor-pointer"
                   >
-                    <option value="">Todas las Estaciones</option>
-                    {MASTER_DATA.stations.map((st) => (
-                      <option key={st} value={st}>
-                        {st}
-                      </option>
-                    ))}
-                  </select>
-                  <Layers className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                </div>
+                    Limpiar Filtros
+                  </button>
+                )}
               </div>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2 self-end sm:self-center">
-              {(filterDate || filterStation) && (
+              {/* OPCIONES DE CONTROL A LA DERECHA */}
+              <div className="flex items-center gap-2.5 self-end shrink-0">
+                <span className="h-9 px-3.5 inline-flex items-center justify-center text-xs bg-slate-100 text-slate-700 font-bold rounded-xl border border-slate-200 shadow-xs whitespace-nowrap">
+                  {sequentialRecords.length} Cajas
+                </span>
                 <button
-                  onClick={() => {
-                    setFilterDate('');
-                    setFilterStation('');
-                  }}
-                  className="text-xs text-prod-600 hover:underline font-bold px-2 py-1"
+                  id="btn-export-excel-production"
+                  type="button"
+                  onClick={() => ExcelExportService.exportProductionToExcel(sequentialRecords)}
+                  className="h-9 px-3.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer whitespace-nowrap"
+                  title="Descargar archivo en Excel (.xlsx)"
                 >
-                  Limpiar Filtros
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Descargar Excel</span>
                 </button>
-              )}
-              <span className="text-xs bg-slate-100 text-slate-700 font-bold px-3 py-1.5 rounded-full border border-slate-200">
-                {sequentialRecords.length} Cajas ({session?.role === 'Administrador' ? 'Vista Global' : 'Mis Cajas'})
-              </span>
-              {session?.role === 'Administrador' && (
-                <>
-                  <button
-                    id="btn-export-excel-production"
-                    type="button"
-                    onClick={() => ExcelExportService.exportProductionToExcel(sequentialRecords)}
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                    title="Descargar archivo en Excel (.xlsx)"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Descargar archivo en Excel</span>
-                  </button>
-                  <button
-                    id="btn-bulk-delete-production"
-                    type="button"
-                    onClick={handleBulkDeleteProduction}
-                    disabled={sequentialRecords.length === 0 || isDeletingBulk}
-                    className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Eliminar masivamente todos los registros visualizados"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Eliminar Registros</span>
-                  </button>
-                </>
-              )}
+                <button
+                  id="btn-bulk-delete-production"
+                  type="button"
+                  onClick={handleBulkDeleteProduction}
+                  disabled={sequentialRecords.length === 0 || isDeletingBulk}
+                  className="h-9 w-9 bg-rose-600 hover:bg-rose-700 text-white rounded-xl flex items-center justify-center shadow-sm transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                  title="Eliminar registros visualizados"
+                  aria-label="Eliminar registros visualizados"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* VISTA PARA USUARIOS CORRIENTES: SIN OPCIONES DE FILTRADO */
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Mis Cajas Registradas</h3>
+                <p className="text-xs text-slate-500">Cajas producidas e inspeccionadas durante tu turno de trabajo</p>
+              </div>
+              <span className="h-9 px-3.5 inline-flex items-center justify-center text-xs bg-slate-100 text-slate-700 font-bold rounded-xl border border-slate-200 whitespace-nowrap">
+                {sequentialRecords.length} Cajas
+              </span>
+            </div>
+          )}
 
           {/* TABLA EN VIVO SECUENCIAL (Caja #1 arriba, consecutivas abajo) */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
