@@ -46,7 +46,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         </div>
         <div>
           <h2 className="text-xl font-black text-slate-900 tracking-tight">INICIO DE SESIÓN</h2>
-          <p className="text-xs text-slate-500">Ingrese sus credenciales de planta para ingresar</p>
+          <p className="text-xs text-slate-500">Ingrese sus credenciales de planta</p>
         </div>
       </div>
 
