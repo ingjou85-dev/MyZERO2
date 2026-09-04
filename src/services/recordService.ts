@@ -11,16 +11,20 @@ import {
   getDocs
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
-import { MaintenanceRecord, ProductionTurnRecord, ProductionQualityRecord } from '../types.ts';
+import { MaintenanceRecord, ProductionTurnRecord, ProductionQualityRecord, ProductionTraceabilityRecord, ProductionWasteRecord } from '../types.ts';
 
 const MAINT_COLLECTION = 'maintenance_records';
 const TURNS_COLLECTION = 'production_turns';
 const QUALITY_COLLECTION = 'production_quality_records';
+const TRACEABILITY_COLLECTION = 'production_traceability_records';
+const WASTE_COLLECTION = 'production_waste_records';
 
 // In-memory caches updated by real-time listeners for fast synchronous utility lookups
 let cachedMaintenanceRecords: MaintenanceRecord[] = [];
 let cachedProductionTurnRecords: ProductionTurnRecord[] = [];
 let cachedProductionQualityRecords: ProductionQualityRecord[] = [];
+let cachedTraceabilityRecords: ProductionTraceabilityRecord[] = [];
+let cachedWasteRecords: ProductionWasteRecord[] = [];
 
 export const RecordService = {
   // --- REAL-TIME LISTENERS ---
@@ -257,6 +261,119 @@ export const RecordService = {
       XLSX.writeFile(wb, 'UNIPACK_Reporte_Produccion_Calidad.xlsx');
     } catch {
       alert('No se pudo generar el archivo Excel de producción.');
+    }
+  },
+
+  // --- TRAZABILIDAD (Persistencia directa en Firestore) ---
+  subscribeTraceabilityRecords: (callback: (records: ProductionTraceabilityRecord[]) => void): Unsubscribe => {
+    const colRef = collection(db, TRACEABILITY_COLLECTION);
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const records: ProductionTraceabilityRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          records.push({ id: docSnap.id, ...docSnap.data() } as ProductionTraceabilityRecord);
+        });
+        records.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || b.id.localeCompare(a.id));
+        cachedTraceabilityRecords = records;
+        callback(records);
+      },
+      (error) => {
+        console.error('Error listening to production_traceability_records in Firestore:', error);
+      }
+    );
+  },
+
+  getTraceabilityRecords: async (): Promise<ProductionTraceabilityRecord[]> => {
+    try {
+      const colRef = collection(db, TRACEABILITY_COLLECTION);
+      const snapshot = await getDocs(colRef);
+      const records: ProductionTraceabilityRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        records.push({ id: docSnap.id, ...docSnap.data() } as ProductionTraceabilityRecord);
+      });
+      records.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || b.id.localeCompare(a.id));
+      cachedTraceabilityRecords = records;
+      return records;
+    } catch (e) {
+      console.error('Error getting traceability records:', e);
+      return cachedTraceabilityRecords;
+    }
+  },
+
+  saveTraceabilityRecord: async (record: ProductionTraceabilityRecord): Promise<void> => {
+    try {
+      const docRef = doc(db, TRACEABILITY_COLLECTION, record.id);
+      const cleanData = JSON.parse(JSON.stringify(record));
+      await setDoc(docRef, cleanData, { merge: true });
+    } catch (error) {
+      console.error('Error saving traceability record in Firestore:', error);
+      throw error;
+    }
+  },
+
+  // --- DESPERDICIO (Persistencia directa en Firestore) ---
+  subscribeWasteRecords: (callback: (records: ProductionWasteRecord[]) => void): Unsubscribe => {
+    const colRef = collection(db, WASTE_COLLECTION);
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const records: ProductionWasteRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          records.push({ id: docSnap.id, ...docSnap.data() } as ProductionWasteRecord);
+        });
+        records.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || b.id.localeCompare(a.id));
+        cachedWasteRecords = records;
+        callback(records);
+      },
+      (error) => {
+        console.error('Error listening to production_waste_records in Firestore:', error);
+      }
+    );
+  },
+
+  getWasteRecords: async (): Promise<ProductionWasteRecord[]> => {
+    try {
+      const colRef = collection(db, WASTE_COLLECTION);
+      const snapshot = await getDocs(colRef);
+      const records: ProductionWasteRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        records.push({ id: docSnap.id, ...docSnap.data() } as ProductionWasteRecord);
+      });
+      records.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || b.id.localeCompare(a.id));
+      cachedWasteRecords = records;
+      return records;
+    } catch (e) {
+      console.error('Error getting waste records:', e);
+      return cachedWasteRecords;
+    }
+  },
+
+  saveWasteRecord: async (record: ProductionWasteRecord): Promise<void> => {
+    try {
+      const docRef = doc(db, WASTE_COLLECTION, record.id);
+      const cleanData = JSON.parse(JSON.stringify(record));
+      await setDoc(docRef, cleanData, { merge: true });
+    } catch (error) {
+      console.error('Error saving waste record in Firestore:', error);
+      throw error;
+    }
+  },
+
+  getProductionTurnsAsync: async (): Promise<ProductionTurnRecord[]> => {
+    try {
+      const colRef = collection(db, TURNS_COLLECTION);
+      const snapshot = await getDocs(colRef);
+      const records: ProductionTurnRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        records.push({ id: docSnap.id, ...docSnap.data() } as ProductionTurnRecord);
+      });
+      records.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || b.id.localeCompare(a.id));
+      cachedProductionTurnRecords = records;
+      return records;
+    } catch (e) {
+      console.error('Error getting production turns:', e);
+      return cachedProductionTurnRecords;
     }
   },
 

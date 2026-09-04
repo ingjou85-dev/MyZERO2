@@ -80,6 +80,9 @@ export const AuthService = {
   ): Promise<{ success: boolean; message?: string }> => {
     try {
       const normalizedUser = user.trim().toUpperCase();
+      if (normalizedUser === 'JTORREGROSA') {
+        return { success: false, message: 'La cuenta superadministradora JTORREGROSA está reservada y protegida.' };
+      }
       if (cachedUsers.some((u) => u.user.toUpperCase() === normalizedUser)) {
         return { success: false, message: 'El usuario ya existe en el sistema.' };
       }
@@ -106,9 +109,13 @@ export const AuthService = {
     }
   },
 
-  updateUser: async (userObj: UserAccount): Promise<void> => {
+  updateUser: async (userObj: UserAccount, requestedBy?: string): Promise<void> => {
     try {
       const normalizedUser = userObj.user.trim().toUpperCase();
+      const requester = requestedBy?.trim().toUpperCase();
+      if (normalizedUser === 'JTORREGROSA' && requester && requester !== 'JTORREGROSA') {
+        throw new Error('Acceso denegado: Solo el usuario JTORREGROSA puede modificar sus propios datos.');
+      }
       const docRef = doc(db, USERS_COLLECTION, normalizedUser);
       await setDoc(docRef, userObj, { merge: true });
 
@@ -119,9 +126,13 @@ export const AuthService = {
     }
   },
 
-  updatePassword: async (username: string, newPass: string): Promise<void> => {
+  updatePassword: async (username: string, newPass: string, requestedBy?: string): Promise<void> => {
     try {
       const normalizedUser = username.trim().toUpperCase();
+      const requester = requestedBy?.trim().toUpperCase();
+      if (normalizedUser === 'JTORREGROSA' && requester && requester !== 'JTORREGROSA') {
+        throw new Error('Acceso denegado: Solo el usuario JTORREGROSA puede modificar su propia contraseña.');
+      }
       const docRef = doc(db, USERS_COLLECTION, normalizedUser);
 
       // Sobrescribir de inmediato el campo pass en Firestore invalidando por completo la contraseña anterior
@@ -151,11 +162,12 @@ export const AuthService = {
     }
   },
 
-  deleteUser: async (username: string): Promise<void> => {
+  deleteUser: async (username: string, requestedBy?: string): Promise<void> => {
     try {
       const normalizedUser = username.trim().toUpperCase();
-      if (normalizedUser === 'JTORREGROSA') {
-        throw new Error('La cuenta de Administrador principal no puede ser eliminada.');
+      const requester = requestedBy?.trim().toUpperCase();
+      if (normalizedUser === 'JTORREGROSA' && requester !== 'JTORREGROSA') {
+        throw new Error('Acceso denegado: Solo el propio usuario JTORREGROSA puede gestionar o eliminar su cuenta.');
       }
       const docRef = doc(db, USERS_COLLECTION, normalizedUser);
       await deleteDoc(docRef);

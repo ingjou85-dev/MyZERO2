@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Keyboard, Pencil } from 'lucide-react';
+import { Clock } from 'lucide-react';
 
 interface TimeInputProps {
   id: string;
@@ -218,17 +218,6 @@ export const TimeInput: React.FC<TimeInputProps> = ({
             aria-hidden="true"
           />
         </div>
-
-        {/* BOTÓN DIGITAR / EDITAR DIRECTO */}
-        <button
-          type="button"
-          onClick={handleFocusClick}
-          title="Editar hora con teclado numérico"
-          className="bg-white hover:bg-slate-50 text-slate-700 font-bold px-2.5 py-2.5 sm:py-3 rounded-xl text-xs uppercase shrink-0 border border-slate-200 shadow-xs transition flex items-center gap-1 cursor-pointer"
-        >
-          <Keyboard className="w-3.5 h-3.5 text-slate-500" />
-          <span className="hidden xs:inline text-[11px]">Digitar</span>
-        </button>
 
         {/* BOTÓN HORA ACTUAL */}
         <button

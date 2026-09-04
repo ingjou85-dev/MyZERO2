@@ -67,6 +67,15 @@ export const AdminCreateView: React.FC<AdminCreateViewProps> = ({ onAccountCreat
       return;
     }
 
+    const normalizedUser = user.trim().toUpperCase();
+    if (normalizedUser === 'JTORREGROSA') {
+      setAlert({
+        type: 'error',
+        message: 'La cuenta superadministradora JTORREGROSA está reservada y protegida por el sistema.'
+      });
+      return;
+    }
+
     const res = await AuthService.register(fullName, user, pass, role as UserRole);
     if (res.success) {
       setAlert({

@@ -1,33 +1,46 @@
 import React, { useState } from 'react';
 import { AuthService } from '../services/authService.ts';
-import { UserAccount } from '../types.ts';
+import { UserAccount, UserSession } from '../types.ts';
 import { formatPersonName } from '../utils/formatters.ts';
-import { Users, Key, ToggleLeft, Trash2, ChevronDown } from 'lucide-react';
+import { Users, Key, ToggleLeft, Trash2, ChevronDown, Lock } from 'lucide-react';
 
 interface AdminListViewProps {
   users: UserAccount[];
+  currentUser?: UserSession | null;
   onRefreshUsers: () => void;
 }
 
-export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUsers }) => {
+export const AdminListView: React.FC<AdminListViewProps> = ({ users, currentUser, onRefreshUsers }) => {
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [openActionUser, setOpenActionUser] = useState<string | null>(null);
 
+  const isCurrentSuperAdmin = currentUser?.user?.trim().toUpperCase() === 'JTORREGROSA';
+
   const handleToggleStatus = async (u: UserAccount) => {
-    if (u.user === 'JTORREGROSA') {
-      alert('La cuenta de Administrador principal no puede ser desactivada.');
+    const isTargetSuperAdmin = u.user?.trim().toUpperCase() === 'JTORREGROSA';
+    if (isTargetSuperAdmin && !isCurrentSuperAdmin) {
+      alert('Acceso denegado: La cuenta de Administrador principal jtorregrosa solo puede ser modificada por su propio titular.');
       return;
     }
     const updated: UserAccount = {
       ...u,
       status: u.status === 'Activo' ? 'Inactivo' : 'Activo'
     };
-    await AuthService.updateUser(updated);
-    onRefreshUsers();
+    try {
+      await AuthService.updateUser(updated, currentUser?.user);
+      onRefreshUsers();
+    } catch (err: any) {
+      alert(err?.message || 'Error al modificar estado del usuario.');
+    }
   };
 
   const handleOpenPasswordModal = (username: string) => {
+    const isTargetSuperAdmin = username?.trim().toUpperCase() === 'JTORREGROSA';
+    if (isTargetSuperAdmin && !isCurrentSuperAdmin) {
+      alert('Acceso denegado: La cuenta de Administrador principal jtorregrosa solo puede ser modificada por su propio titular.');
+      return;
+    }
     setEditingUser(username);
     setNewPassword('');
   };
@@ -38,8 +51,13 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
       alert('La contraseña debe tener mínimo 4 caracteres.');
       return;
     }
+    const isTargetSuperAdmin = editingUser?.trim().toUpperCase() === 'JTORREGROSA';
+    if (isTargetSuperAdmin && !isCurrentSuperAdmin) {
+      alert('Acceso denegado: Solo jtorregrosa puede modificar su propia contraseña.');
+      return;
+    }
     try {
-      await AuthService.updatePassword(editingUser, newPassword);
+      await AuthService.updatePassword(editingUser, newPassword, currentUser?.user);
       alert(
         `Contraseña actualizada con éxito para el usuario ${editingUser}. La clave anterior ha sido invalidada inmediatamente en la base de datos.`
       );
@@ -52,13 +70,18 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
   };
 
   const handleDeleteUser = async (username: string) => {
-    if (username === 'JTORREGROSA') {
-      alert('La cuenta de Administrador principal no puede ser eliminada.');
+    const isTargetSuperAdmin = username?.trim().toUpperCase() === 'JTORREGROSA';
+    if (isTargetSuperAdmin && !isCurrentSuperAdmin) {
+      alert('Acceso denegado: La cuenta de Administrador principal jtorregrosa no puede ser eliminada por otro administrador.');
       return;
     }
     if (window.confirm(`¿Está seguro de eliminar al usuario ${username}?`)) {
-      await AuthService.deleteUser(username);
-      onRefreshUsers();
+      try {
+        await AuthService.deleteUser(username, currentUser?.user);
+        onRefreshUsers();
+      } catch (err: any) {
+        alert(err?.message || 'Error al eliminar usuario');
+      }
     }
   };
 
@@ -97,6 +120,7 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
                   : 'bg-rose-100 text-rose-800';
               const roleBadge =
                 u.role === 'Administrador' ? 'text-indigo-600' : 'text-slate-600';
+              const isTargetSuperAdmin = u.user?.trim().toUpperCase() === 'JTORREGROSA';
 
               return (
                 <tr key={u.user} className="hover:bg-slate-50 transition">
@@ -112,60 +136,68 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
                   </td>
                   <td className="p-3 text-slate-500">{u.createdAt}</td>
                   <td className="p-3 text-center whitespace-nowrap">
-                    <div className="relative inline-block text-left">
-                      <button
-                        id={`btn-actions-${u.user}`}
-                        type="button"
-                        onClick={() =>
-                          setOpenActionUser(openActionUser === u.user ? null : u.user)
-                        }
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    {isTargetSuperAdmin && !isCurrentSuperAdmin ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-[11px] font-bold select-none cursor-not-allowed"
+                        title="Cuenta Superadministradora protegida. Solo jtorregrosa puede modificar o gestionar su cuenta."
                       >
-                        <span>Acciones</span>
-                        <ChevronDown
-                          className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${
-                            openActionUser === u.user ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </button>
-
-                      {openActionUser === u.user && (
-                        <>
-                          {/* Fondo invisible para cerrar menú al hacer clic fuera */}
-                          <div
-                            className="fixed inset-0 z-20 cursor-default"
-                            onClick={() => setOpenActionUser(null)}
+                        <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Protegido</span>
+                      </span>
+                    ) : (
+                      <div className="relative inline-block text-left">
+                        <button
+                          id={`btn-actions-${u.user}`}
+                          type="button"
+                          onClick={() =>
+                            setOpenActionUser(openActionUser === u.user ? null : u.user)
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                        >
+                          <span>Acciones</span>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${
+                              openActionUser === u.user ? 'rotate-180' : ''
+                            }`}
                           />
+                        </button>
 
-                          {/* Menú Desplegable de Acciones */}
-                          <div className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100 divide-y divide-slate-100">
-                            <div className="py-0.5">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenActionUser(null);
-                                  handleToggleStatus(u);
-                                }}
-                                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 font-medium transition text-xs cursor-pointer"
-                              >
-                                <ToggleLeft className="w-4 h-4 text-amber-500" />
-                                <span>Cambiar Estado</span>
-                              </button>
+                        {openActionUser === u.user && (
+                          <>
+                            {/* Fondo invisible para cerrar menú al hacer clic fuera */}
+                            <div
+                              className="fixed inset-0 z-20 cursor-default"
+                              onClick={() => setOpenActionUser(null)}
+                            />
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenActionUser(null);
-                                  handleOpenPasswordModal(u.user);
-                                }}
-                                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 font-medium transition text-xs cursor-pointer"
-                              >
-                                <Key className="w-4 h-4 text-blue-500" />
-                                <span>Cambiar Clave</span>
-                              </button>
-                            </div>
+                            {/* Menú Desplegable de Acciones */}
+                            <div className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100 divide-y divide-slate-100">
+                              <div className="py-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenActionUser(null);
+                                    handleToggleStatus(u);
+                                  }}
+                                  className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 font-medium transition text-xs cursor-pointer"
+                                >
+                                  <ToggleLeft className="w-4 h-4 text-amber-500" />
+                                  <span>Cambiar Estado</span>
+                                </button>
 
-                            {u.user !== 'JTORREGROSA' && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenActionUser(null);
+                                    handleOpenPasswordModal(u.user);
+                                  }}
+                                  className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 font-medium transition text-xs cursor-pointer"
+                                >
+                                  <Key className="w-4 h-4 text-blue-500" />
+                                  <span>Cambiar Clave</span>
+                                </button>
+                              </div>
+
                               <div className="py-0.5">
                                 <button
                                   type="button"
@@ -179,11 +211,11 @@ export const AdminListView: React.FC<AdminListViewProps> = ({ users, onRefreshUs
                                   <span>Eliminar Usuario</span>
                                 </button>
                               </div>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               );

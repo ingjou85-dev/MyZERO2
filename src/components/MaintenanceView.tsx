@@ -339,8 +339,15 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
         return;
       }
     }
-    // Paso 4: Hora de Llegada del Mecánico
+    // Paso 4: Mecánico
     if (currentStep === 4) {
+      if (!solvingTechnician) {
+        setValidationAlert('Por favor seleccione el mecánico responsable.');
+        return;
+      }
+    }
+    // Paso 5: Hora de Llegada de Mecánico
+    if (currentStep === 5) {
       if (!technicianArrivalTime) {
         setValidationAlert('Por favor ingrese la hora de llegada del mecánico.');
         return;
@@ -350,26 +357,11 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
         return;
       }
     }
-    // Paso 5: Solución Aplicada
-    if (currentStep === 5) {
+    // Paso 6: Solución Aplicada
+    if (currentStep === 6) {
       const sols = getEffectiveSolutionsList();
       if (sols.length === 0) {
         setValidationAlert('Por favor seleccione al menos una solución aplicada o escriba una nueva.');
-        return;
-      }
-    }
-    // Paso 6: Hora Final de Solución / Cierre
-    if (currentStep === 6) {
-      if (!closingTime) {
-        setValidationAlert('Por favor ingrese la hora final de solución / cierre.');
-        return;
-      }
-      if (failureTime && compareTimes(closingTime, failureTime) < 0) {
-        setValidationAlert(`⚠️ La hora de cierre (${closingTime}) no puede ser menor que la hora de parada (${failureTime}).`);
-        return;
-      }
-      if (technicianArrivalTime && compareTimes(closingTime, technicianArrivalTime) < 0) {
-        setValidationAlert(`⚠️ La hora de cierre (${closingTime}) no puede ser menor que la hora de llegada del mecánico (${technicianArrivalTime}).`);
         return;
       }
     }
@@ -400,9 +392,9 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     const defsList = getEffectiveDefectsList();
     const solsList = getEffectiveSolutionsList();
 
-    // Validación de campos vacíos en el paso final
-    if (!machine || !failureTime || !technicianArrivalTime || defsList.length === 0 || solsList.length === 0 || !closingTime || !solvingTechnician || !effectiveSolution) {
-      setValidationAlert('Existen campos sin diligenciar. Por favor complete todos los pasos (incluyendo mecánico y solución efectiva) antes de finalizar.');
+    // Validación de campos vacíos en el paso final (Paso 7: Hora Final de Solución y Efectividad)
+    if (!machine || !failureTime || !solvingTechnician || !technicianArrivalTime || defsList.length === 0 || solsList.length === 0 || !closingTime || !effectiveSolution) {
+      setValidationAlert('Existen campos sin diligenciar. Por favor complete todos los pasos (incluyendo mecánico, hora de cierre y solución efectiva) antes de finalizar.');
       return;
     }
 
@@ -469,7 +461,8 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
       rec.closingTime ? 7 :
       (rec.solutions && rec.solutions.length > 0) ? 6 :
       rec.technicianArrivalTime ? 5 :
-      (rec.defects && rec.defects.length > 0) ? 4 :
+      (rec.solvingTechnician || rec.technician) ? 4 :
+      (rec.defects && rec.defects.length > 0) ? 3 :
       rec.failureTime ? 2 : 1
     );
     setCurrentStep(targetStep);
@@ -785,10 +778,10 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                       {currentStep === 1 && '1. Selección de Máquina'}
                       {currentStep === 2 && '2. Hora de Parada'}
                       {currentStep === 3 && '3. Defecto Detectado'}
-                      {currentStep === 4 && '4. Hora de Llegada del Mecánico'}
-                      {currentStep === 5 && '5. Solución Aplicada'}
-                      {currentStep === 6 && '6. Hora Final de Solución'}
-                      {currentStep === 7 && '7. Mecánico y Efectividad'}
+                      {currentStep === 4 && '4. Mecánico'}
+                      {currentStep === 5 && '5. Hora de Llegada de Mecánico'}
+                      {currentStep === 6 && '6. Solución Aplicada'}
+                      {currentStep === 7 && '7. Hora Final de Solución y Efectividad'}
                     </h3>
                     <p className="text-[10px] text-slate-400">
                       Reporte: {currentRecord?.reportNumber} | {userStation}
@@ -972,12 +965,43 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                   </div>
                 )}
 
-                {/* PASO 4: HORA DE LLEGADA DEL MECÁNICO (OPTIMIZADO CON TECLADO NUMÉRICO) */}
+                {/* PASO 4: MECÁNICO */}
                 {currentStep === 4 && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                        Mecánico Responsable *
+                      </label>
+                      <p className="text-[11px] text-slate-500 mb-2">
+                        Seleccione el técnico o mecánico asignado para la atención de la novedad.
+                      </p>
+                      <select
+                        id="maintInpTech"
+                        value={solvingTechnician}
+                        onChange={(e) => {
+                          setSolvingTechnician(e.target.value);
+                          setValidationAlert('');
+                        }}
+                        required
+                        className="w-full border border-slate-300 p-2.5 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none"
+                      >
+                        <option value="">Seleccionar Mecánico</option>
+                        {MASTER_DATA.technicians.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* PASO 5: HORA DE LLEGADA DE MECÁNICO (OPTIMIZADO CON TECLADO NUMÉRICO) */}
+                {currentStep === 5 && (
                   <div className="space-y-3">
                     <TimeInput
                       id="maintInpArrivalTime"
-                      label="Hora de Llegada del Mecánico *"
+                      label="Hora de Llegada de Mecánico *"
                       value={technicianArrivalTime}
                       onChange={(val) => {
                         setTechnicianArrivalTime(val);
@@ -986,7 +1010,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                       required
                       accentColor="maint"
                       placeholder="HH:MM (24h)"
-                      helperText="Momento exacto en que el mecánico o técnico se presentó en la máquina."
+                      helperText="Momento exacto en que el mecánico se presentó en la máquina."
                       onNowClick={() => {
                         setTechnicianArrivalTime(getNowTimeString());
                         setValidationAlert('');
@@ -995,8 +1019,8 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                   </div>
                 )}
 
-                {/* PASO 5: SOLUCIÓN APLICADA (GRUPO DE CHIPS / ETIQUETAS CON SELECCIÓN MÚLTIPLE) */}
-                {currentStep === 5 && (
+                {/* PASO 6: SOLUCIÓN APLICADA (GRUPO DE CHIPS / ETIQUETAS CON SELECCIÓN MÚLTIPLE) */}
+                {currentStep === 6 && (
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <label className="block text-xs font-bold text-slate-700 uppercase">
@@ -1063,9 +1087,9 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                   </div>
                 )}
 
-                {/* PASO 6: HORA FINAL DE SOLUCIÓN / CIERRE (OPTIMIZADO CON TECLADO NUMÉRICO) */}
-                {currentStep === 6 && (
-                  <div className="space-y-3">
+                {/* PASO 7: HORA FINAL DE SOLUCIÓN Y EFECTIVIDAD */}
+                {currentStep === 7 && (
+                  <div className="space-y-4">
                     <TimeInput
                       id="maintInpClosingTime"
                       label="Hora Final de Solución / Cierre *"
@@ -1083,31 +1107,6 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                         setValidationAlert('');
                       }}
                     />
-                  </div>
-                )}
-
-                {/* PASO 7: MECÁNICO Y SOLUCIÓN EFECTIVA */}
-                {currentStep === 7 && (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                        Mecánico Responsable *
-                      </label>
-                      <select
-                        id="maintInpTech"
-                        value={solvingTechnician}
-                        onChange={(e) => setSolvingTechnician(e.target.value)}
-                        required
-                        className="w-full border border-slate-300 p-2.5 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-maint-600 focus:outline-none"
-                      >
-                        <option value="">Seleccionar Mecánico</option>
-                        {MASTER_DATA.technicians.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
 
                     <div className="border-t border-slate-100 pt-3">
                       <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
@@ -1117,7 +1116,10 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                         <button
                           type="button"
                           id="btn-solucion-efectiva-si"
-                          onClick={() => setEffectiveSolution('Sí')}
+                          onClick={() => {
+                            setEffectiveSolution('Sí');
+                            setValidationAlert('');
+                          }}
                           className={`p-3 rounded-xl border font-black text-xs uppercase flex items-center justify-center gap-2 transition cursor-pointer ${
                             effectiveSolution === 'Sí'
                               ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
@@ -1129,7 +1131,10 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
                         <button
                           type="button"
                           id="btn-solucion-efectiva-no"
-                          onClick={() => setEffectiveSolution('No')}
+                          onClick={() => {
+                            setEffectiveSolution('No');
+                            setValidationAlert('');
+                          }}
                           className={`p-3 rounded-xl border font-black text-xs uppercase flex items-center justify-center gap-2 transition cursor-pointer ${
                             effectiveSolution === 'No'
                               ? 'bg-rose-600 text-white border-rose-600 shadow-sm'

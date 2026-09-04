@@ -71,6 +71,7 @@ export interface ProductionQualityRecord {
   machine: string;
   reference: string;
   packer: string;
+  userId?: string;
   tech?: string;
   aux?: string;
   weightBottom?: number; // PESO VASO INDIVIDUAL
@@ -94,4 +95,39 @@ export interface ProductionQualityRecord {
 export type AppView = 'HOME' | 'MAINTENANCE' | 'PRODUCTION' | 'ADMIN_CREATE' | 'ADMIN_LIST';
 export type MaintTab = 'INGRESAR' | 'LIVE' | 'DASHBOARD' | 'RESUMEN';
 export type ProdTab = 'INGRESAR' | 'LIVE' | 'DASHBOARD' | 'RESUMEN';
+
+export interface ProductionTraceabilityRecord {
+  id: string;
+  date: string;
+  time: string;
+  station: string;
+  shift: string;
+  machine: string;
+  rollCode: string;
+  operator: string;
+  userId?: string;
+  createdAt: string;
+  status: 'FINALIZADO';
+}
+
+export interface WasteItem {
+  reason: 'CUADRE MÁQUINA' | 'PUNTA' | 'ENCERADO' | 'MERMA' | 'ROLLO' | 'OTROS' | string;
+  weightKg: number;
+  otherDescription?: string;
+}
+
+export interface ProductionWasteRecord {
+  id: string;
+  date: string;
+  time: string;
+  station: string;
+  shift: string;
+  machine?: string;
+  operator: string;
+  userId?: string;
+  items: WasteItem[];
+  totalWeightKg: number;
+  createdAt: string;
+  status: 'FINALIZADO';
+}
 

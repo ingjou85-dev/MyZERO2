@@ -241,6 +241,7 @@ export default function App() {
             {activeView === 'ADMIN_LIST' && session.role === 'Administrador' && (
               <AdminListView
                 users={usersList}
+                currentUser={session}
                 onRefreshUsers={refreshData}
               />
             )}
