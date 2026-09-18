@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserSession, ProductionTurnRecord, ProductionTraceabilityRecord, ProductionWasteRecord, WasteItem } from '../types.ts';
 import { RecordService } from '../services/recordService.ts';
+import { MASTER_DATA } from '../constants/masterData.ts';
 import {
   Layers,
   QrCode,
@@ -85,11 +86,14 @@ export const ProductionAuxiliaryCard: React.FC<ProductionAuxiliaryCardProps> = (
 
     try {
       setIsSavingTraz(true);
+      const stationFromMachine = trazMachine ? MASTER_DATA.getStationForMachine(trazMachine) : '';
+      const effectiveStation = stationFromMachine || userStation || 'Estación 452';
+
       const record: ProductionTraceabilityRecord = {
         id: 'traz-' + Date.now(),
         date: activeTurn?.date || new Date().toISOString().split('T')[0],
         time: getNowTimeString(),
-        station: userStation,
+        station: effectiveStation,
         shift: activeTurn?.shift || '',
         machine: trazMachine,
         rollCode: trazRollCode.trim().toUpperCase(),
@@ -180,13 +184,17 @@ export const ProductionAuxiliaryCard: React.FC<ProductionAuxiliaryCardProps> = (
 
     try {
       setIsSavingWaste(true);
+      const effectiveWasteMachine = wasteMachine || availableMachines[0] || '';
+      const stationFromMachine = effectiveWasteMachine ? MASTER_DATA.getStationForMachine(effectiveWasteMachine) : '';
+      const effectiveStation = stationFromMachine || userStation || 'Estación 452';
+
       const record: ProductionWasteRecord = {
         id: 'waste-' + Date.now(),
         date: activeTurn?.date || new Date().toISOString().split('T')[0],
         time: getNowTimeString(),
-        station: userStation,
+        station: effectiveStation,
         shift: activeTurn?.shift || '',
-        machine: wasteMachine || availableMachines[0] || '',
+        machine: effectiveWasteMachine,
         operator: (session?.fullName || activeTurn?.packer || 'Operario').toUpperCase(),
         userId: session?.user || '',
         items,

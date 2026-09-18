@@ -137,133 +137,126 @@ export const ProductionSummaryTab: React.FC<ProductionSummaryTabProps> = ({
     return 'other';
   };
 
-  // Helper para resolver la estación global ('452', '453', '454', '455', '4 oz', '6 oz')
-  const getRecordStationId = (r: ProductionQualityRecord): string => {
-    // 1. Vinculación directa con la estación seleccionada e ingresada por el operario en el registro de turno
-    if (turnRecords.length > 0) {
-      const matchTurn = turnRecords.find(
-        (t) =>
-          (!t.date || !r.date || t.date === r.date) &&
-          (!t.shift || !r.shift || t.shift === r.shift) &&
-          ((t.packer && r.packer && t.packer.trim().toUpperCase() === r.packer.trim().toUpperCase()) ||
-            (t.userId && r.userId && t.userId === r.userId))
-      );
-      if (matchTurn?.station) {
-        const st = matchTurn.station;
-        if (st.includes('452') || st.includes('451') || st.includes('51')) return '452';
-        if (st.includes('453') || st.includes('53')) return '453';
-        if (st.includes('454') || st.includes('54')) return '454';
-        if (st.includes('455') || st.includes('55')) return '455';
-        if (st.toLowerCase().includes('4 oz') || st.toLowerCase().includes('4oz')) return '4 oz';
-        if (st.toLowerCase().includes('6 oz') || st.toLowerCase().includes('6oz')) return '6 oz';
+  /**
+   * Resuelve de forma estricta, desacoplada e independiente el ID de Estación
+   * ('452', '453', '454', '455', '4 oz', '6 oz') para cualquier registro.
+   * Totalmente independiente del consecutivo global y de los turnos del usuario.
+   */
+  const resolveStationId = (station?: string, machine?: string): string | null => {
+    const st = (station || '').trim().toLowerCase();
+    const m = (machine || '').trim();
+
+    // 1. Coincidencia explícita por ID / Nombre de Estación guardado en el registro
+    if (
+      st.includes('estación 452') ||
+      st.includes('estacion 452') ||
+      st.includes('estación 451') ||
+      st.includes('estacion 451') ||
+      st.includes('estación 51') ||
+      st.includes('estacion 51') ||
+      st === '452' ||
+      st === '451' ||
+      st === '51'
+    ) {
+      return '452';
+    }
+
+    if (
+      st.includes('estación 453') ||
+      st.includes('estacion 453') ||
+      st.includes('estación 53') ||
+      st.includes('estacion 53') ||
+      st === '453' ||
+      st === '53'
+    ) {
+      return '453';
+    }
+
+    if (
+      st.includes('estación 454') ||
+      st.includes('estacion 454') ||
+      st.includes('estación 54') ||
+      st.includes('estacion 54') ||
+      st === '454' ||
+      st === '54'
+    ) {
+      return '454';
+    }
+
+    if (
+      st.includes('estación 455') ||
+      st.includes('estacion 455') ||
+      st.includes('estación 55') ||
+      st.includes('estacion 55') ||
+      st === '455' ||
+      st === '55'
+    ) {
+      return '455';
+    }
+
+    if (st.includes('4 oz') || st.includes('4oz') || st === '4') {
+      return '4 oz';
+    }
+
+    if (st.includes('6 oz') || st.includes('6oz') || st === '6') {
+      return '6 oz';
+    }
+
+    // 2. Si la estación no vino especificada explícitamente, resolver por la máquina única asignada
+    if (m) {
+      if (['459', '4513', '4514', '4515', '4516'].includes(m)) return '452';
+      if (['451', '456', '4517', '4518', '4519'].includes(m)) return '453';
+      if (['452', '454', '4511', '4512', '4520'].includes(m)) return '454';
+      if (['453', '455', '457', '458', '4510'].includes(m)) return '455';
+      if (['401', '402', '403', '404'].includes(m)) return '4 oz';
+      if (['601', '602', '603'].includes(m)) return '6 oz';
+
+      const masterSt = MASTER_DATA.getStationForMachine(m);
+      if (masterSt) {
+        if (masterSt.includes('452') || masterSt.includes('451') || masterSt.includes('51')) return '452';
+        if (masterSt.includes('453') || masterSt.includes('53')) return '453';
+        if (masterSt.includes('454') || masterSt.includes('54')) return '454';
+        if (masterSt.includes('455') || masterSt.includes('55')) return '455';
+        if (masterSt.toLowerCase().includes('4 oz')) return '4 oz';
+        if (masterSt.toLowerCase().includes('6 oz')) return '6 oz';
       }
     }
 
-    // 2. Estación directa guardada en el registro de la caja
-    if (r.station) {
-      const st = r.station;
-      if (st.includes('452') || st.includes('451') || st.includes('51')) return '452';
-      if (st.includes('453') || st.includes('53')) return '453';
-      if (st.includes('454') || st.includes('54')) return '454';
-      if (st.includes('455') || st.includes('55')) return '455';
-      if (st.toLowerCase().includes('4 oz') || st.toLowerCase().includes('4oz')) return '4 oz';
-      if (st.toLowerCase().includes('6 oz') || st.toLowerCase().includes('6oz')) return '6 oz';
-    }
+    // 3. Fallback de subcadena segura
+    if (st.includes('452')) return '452';
+    if (st.includes('453')) return '453';
+    if (st.includes('454')) return '454';
+    if (st.includes('455')) return '455';
 
-    // 3. Por la máquina asignada a la caja
-    if (r.machine) {
-      const st = MASTER_DATA.getStationForMachine(r.machine);
-      if (st) {
-        if (st.includes('452') || st.includes('451') || st.includes('51')) return '452';
-        if (st.includes('453') || st.includes('53')) return '453';
-        if (st.includes('454') || st.includes('54')) return '454';
-        if (st.includes('455') || st.includes('55')) return '455';
-        if (st.toLowerCase().includes('4 oz')) return '4 oz';
-        if (st.toLowerCase().includes('6 oz')) return '6 oz';
-      }
-      if (['459', '4513', '4514', '4515', '4516'].includes(r.machine)) return '452';
-      if (['451', '456', '4517', '4518', '4519'].includes(r.machine)) return '453';
-      if (['452', '454', '4511', '4512', '4520'].includes(r.machine)) return '454';
-      if (['453', '455', '457', '458', '4510'].includes(r.machine)) return '455';
-      if (['401', '402', '403', '404'].includes(r.machine)) return '4 oz';
-      if (['601', '602', '603'].includes(r.machine)) return '6 oz';
-    }
-
-    // 4. Fallback por referencia
-    const ref = (r.reference || '').toLowerCase();
-    if (ref.includes('4,5') || ref.includes('4.5')) return '452';
-    if (ref.includes('4 oz') || ref.includes('4oz')) return '4 oz';
-    if (ref.includes('6 oz') || ref.includes('6oz')) return '6 oz';
-
-    return '';
+    return null;
   };
 
-  // Helper para vincular registros operativos (Desperdicio y Trazabilidad) a una estación
-  const matchOperationalRecordToStation = (
-    rec: { station?: string; machine?: string; operator?: string; userId?: string; date?: string; shift?: string },
-    targetStationId: string,
-    targetMachines: string[]
-  ): boolean => {
-    const st = (rec.station || '').toLowerCase();
-    const m = rec.machine || '';
-
-    // A. Match directo por estación guardada
-    if (targetStationId === '452') {
-      if (st.includes('452') || st.includes('451') || st.includes('51')) return true;
-    } else if (targetStationId === '453') {
-      if (st.includes('453') || st.includes('53')) return true;
-    } else if (targetStationId === '454') {
-      if (st.includes('454') || st.includes('54')) return true;
-    } else if (targetStationId === '455') {
-      if (st.includes('455') || st.includes('55')) return true;
-    } else if (targetStationId === '4 oz') {
-      if (st.includes('4 oz') || st.includes('4oz')) return true;
-    } else if (targetStationId === '6 oz') {
-      if (st.includes('6 oz') || st.includes('6oz')) return true;
-    }
-
-    // B. Match por máquina
-    if (m && targetMachines.includes(m)) return true;
-    if (m) {
-      const stationFromMachine = MASTER_DATA.getStationForMachine(m);
-      if (stationFromMachine) {
-        if (targetStationId === '452' && (stationFromMachine.includes('452') || stationFromMachine.includes('451') || stationFromMachine.includes('51'))) return true;
-        if (targetStationId === '453' && (stationFromMachine.includes('453') || stationFromMachine.includes('53'))) return true;
-        if (targetStationId === '454' && (stationFromMachine.includes('454') || stationFromMachine.includes('54'))) return true;
-        if (targetStationId === '455' && (stationFromMachine.includes('455') || stationFromMachine.includes('55'))) return true;
-        if (targetStationId === '4 oz' && (stationFromMachine.toLowerCase().includes('4 oz') || stationFromMachine.toLowerCase().includes('4oz'))) return true;
-        if (targetStationId === '6 oz' && (stationFromMachine.toLowerCase().includes('6 oz') || stationFromMachine.toLowerCase().includes('6oz'))) return true;
-      }
-    }
-
-    // C. Match por turno asociado del operario
-    if (turnRecords.length > 0) {
-      const matchTurn = turnRecords.find(
-        (t) =>
-          (!t.date || !rec.date || t.date === rec.date) &&
-          (!t.shift || !rec.shift || t.shift === rec.shift) &&
-          ((t.packer && rec.operator && t.packer.trim().toUpperCase() === rec.operator.trim().toUpperCase()) ||
-            (t.userId && rec.userId && t.userId === rec.userId))
-      );
-      if (matchTurn?.station) {
-        const turnSt = matchTurn.station.toLowerCase();
-        if (targetStationId === '452' && (turnSt.includes('452') || turnSt.includes('451') || turnSt.includes('51'))) return true;
-        if (targetStationId === '453' && (turnSt.includes('453') || turnSt.includes('53'))) return true;
-        if (targetStationId === '454' && (turnSt.includes('454') || turnSt.includes('54'))) return true;
-        if (targetStationId === '455' && (turnSt.includes('455') || turnSt.includes('55'))) return true;
-        if (targetStationId === '4 oz' && (turnSt.includes('4 oz') || turnSt.includes('4oz'))) return true;
-        if (targetStationId === '6 oz' && (turnSt.includes('6 oz') || turnSt.includes('6oz'))) return true;
-      }
-    }
-
+  // Filtro de registros de cajas finalizados y completados (desacoplado de borradores)
+  const isFinalizedBox = (r: ProductionQualityRecord): boolean => {
+    if (r.status === 'FINALIZADO') return true;
+    if (!r.status && (!!r.approval || !!r.approvedBy || (r.boxNumber > 0 && !!r.machine))) return true;
     return false;
   };
 
-  // Contadores para las tarjetas de métricas superiores
-  const totalCajas = filteredRecords.length;
-  const totalCajas45 = filteredRecords.filter((r) => getRecordOzCategory(r) === '4.5').length;
-  const totalCajas4 = filteredRecords.filter((r) => getRecordOzCategory(r) === '4').length;
-  const totalCajas6 = filteredRecords.filter((r) => getRecordOzCategory(r) === '6').length;
+  // Filtro de registros de trazabilidad finalizados (ROLLOS)
+  const isFinalizedTrace = (t: ProductionTraceabilityRecord): boolean => {
+    if (t.status === 'FINALIZADO') return true;
+    if (!t.status && !!t.rollCode) return true;
+    return false;
+  };
+
+  // Filtro de registros de desperdicio finalizados
+  const isFinalizedWaste = (w: ProductionWasteRecord): boolean => {
+    if (w.status === 'FINALIZADO') return true;
+    if (!w.status && ((w.totalWeightKg && w.totalWeightKg > 0) || (w.items && w.items.length > 0))) return true;
+    return false;
+  };
+
+  // Criterio de agregación para determinar si corresponde a Turno 2 o Turno 1
+  const isTurno2 = (shiftStr?: string): boolean => {
+    const s = (shiftStr || '').toLowerCase().trim();
+    return s === 'turno 2' || s.includes('2') || s.includes('dos') || s === 't2';
+  };
 
   // TABLA 1: Estaciones 4.5 oz
   // Metas fijas: 452, 453, 454 = 180 | 455 = 144
@@ -275,33 +268,25 @@ export const ProductionSummaryTab: React.FC<ProductionSummaryTabProps> = ({
   ];
 
   const station45Rows = stations45List.map((st) => {
+    // Filtrado estricto e independiente por ID de estación exclusiva para cajas finalizadas
     const recsForStation = filteredRecords.filter((r) => {
-      const recStationId = getRecordStationId(r);
-      if (recStationId === st.id) return true;
-      if (st.id === '452' && (recStationId === '51' || recStationId === '451')) return true;
-      if (st.id === '453' && recStationId === '53') return true;
-      if (st.id === '454' && recStationId === '54') return true;
-      if (st.id === '455' && recStationId === '55') return true;
-      if (r.machine && st.machines.includes(r.machine)) return true;
-      return false;
+      if (!isFinalizedBox(r)) return false;
+      return resolveStationId(r.station, r.machine) === st.id;
     });
 
-    const turno1 = recsForStation.filter(
-      (r) => r.shift === 'Turno 1' || r.shift?.toLowerCase().includes('1')
-    ).length;
-    const turno2 = recsForStation.filter(
-      (r) => r.shift === 'Turno 2' || r.shift?.toLowerCase().includes('2')
-    ).length;
-    const total = recsForStation.length;
+    const turno2 = recsForStation.filter((r) => isTurno2(r.shift)).length;
+    const turno1 = recsForStation.filter((r) => !isTurno2(r.shift)).length;
+    const total = turno1 + turno2;
 
     const meta = st.meta;
     const variacion = meta - total;
     const utilizacion = meta > 0 ? (total / meta) * 100 : 0;
 
-    // Desperdicio: sumatoria total en kilogramos a partir de los registros operativos de Desperdicio
-    const wasteForStation = activeWasteRecords.filter((w) =>
-      matchOperationalRecordToStation(w, st.id, st.machines)
-    );
+    // Desperdicio: sumatoria total en kg filtrado estrictamente por estación
+    const wasteForStation = activeWasteRecords.filter((w) => {
+      if (!isFinalizedWaste(w)) return false;
+      return resolveStationId(w.station, w.machine) === st.id;
+    });
     const desperdicioTotalKg = wasteForStation.reduce((sum, w) => {
       if (typeof w.totalWeightKg === 'number' && !isNaN(w.totalWeightKg) && w.totalWeightKg > 0) {
         return sum + w.totalWeightKg;
@@ -314,10 +299,11 @@ export const ProductionSummaryTab: React.FC<ProductionSummaryTabProps> = ({
     }, 0);
     const desperdicio = Number(desperdicioTotalKg.toFixed(2));
 
-    // ROLLOS: conteo/cantidad total de registros operativos finalizados desde la opción de Trazabilidad
-    const traceForStation = activeTraceabilityRecords.filter((t) =>
-      matchOperationalRecordToStation(t, st.id, st.machines)
-    );
+    // ROLLOS: conteo estricto e independiente de registros operativos finalizados de trazabilidad para esta estación
+    const traceForStation = activeTraceabilityRecords.filter((t) => {
+      if (!isFinalizedTrace(t)) return false;
+      return resolveStationId(t.station, t.machine) === st.id;
+    });
     const rollos = traceForStation.length;
 
     return {
@@ -360,32 +346,25 @@ export const ProductionSummaryTab: React.FC<ProductionSummaryTabProps> = ({
   ];
 
   const station46Rows = stations46List.map((st) => {
+    // Filtrado estricto e independiente por ID de estación exclusiva para cajas finalizadas
     const recsForStation = filteredRecords.filter((r) => {
-      const recStationId = getRecordStationId(r);
-      if (recStationId === st.id) return true;
-      if (r.machine && st.machines.includes(r.machine)) return true;
-      const cat = getRecordOzCategory(r);
-      if (st.id === '4 oz' && cat === '4') return true;
-      if (st.id === '6 oz' && cat === '6') return true;
-      return false;
+      if (!isFinalizedBox(r)) return false;
+      return resolveStationId(r.station, r.machine) === st.id;
     });
 
-    const turno1 = recsForStation.filter(
-      (r) => r.shift === 'Turno 1' || r.shift?.toLowerCase().includes('1')
-    ).length;
-    const turno2 = recsForStation.filter(
-      (r) => r.shift === 'Turno 2' || r.shift?.toLowerCase().includes('2')
-    ).length;
-    const total = recsForStation.length;
+    const turno2 = recsForStation.filter((r) => isTurno2(r.shift)).length;
+    const turno1 = recsForStation.filter((r) => !isTurno2(r.shift)).length;
+    const total = turno1 + turno2;
 
     const meta = st.meta;
     const variacion = meta - total;
     const utilizacion = meta > 0 ? (total / meta) * 100 : 0;
 
-    // Desperdicio: sumatoria total en kilogramos a partir de los registros operativos de Desperdicio
-    const wasteForStation = activeWasteRecords.filter((w) =>
-      matchOperationalRecordToStation(w, st.id, st.machines)
-    );
+    // Desperdicio filtrado estrictamente por estación
+    const wasteForStation = activeWasteRecords.filter((w) => {
+      if (!isFinalizedWaste(w)) return false;
+      return resolveStationId(w.station, w.machine) === st.id;
+    });
     const desperdicioTotalKg = wasteForStation.reduce((sum, w) => {
       if (typeof w.totalWeightKg === 'number' && !isNaN(w.totalWeightKg) && w.totalWeightKg > 0) {
         return sum + w.totalWeightKg;
@@ -398,10 +377,11 @@ export const ProductionSummaryTab: React.FC<ProductionSummaryTabProps> = ({
     }, 0);
     const desperdicio = Number(desperdicioTotalKg.toFixed(2));
 
-    // ROLLOS: conteo/cantidad total de registros operativos finalizados desde la opción de Trazabilidad
-    const traceForStation = activeTraceabilityRecords.filter((t) =>
-      matchOperationalRecordToStation(t, st.id, st.machines)
-    );
+    // ROLLOS: conteo estricto e independiente por estación
+    const traceForStation = activeTraceabilityRecords.filter((t) => {
+      if (!isFinalizedTrace(t)) return false;
+      return resolveStationId(t.station, t.machine) === st.id;
+    });
     const rollos = traceForStation.length;
 
     return {
@@ -435,6 +415,12 @@ export const ProductionSummaryTab: React.FC<ProductionSummaryTabProps> = ({
     station46Totals.meta > 0
       ? ((station46Totals.total / station46Totals.meta) * 100).toFixed(1)
       : '0.0';
+
+  // Contadores para las tarjetas de métricas superiores (desacopladas y en sincronía exacta con las tablas)
+  const totalCajas = station45Totals.total + station46Totals.total;
+  const totalCajas45 = station45Totals.total;
+  const totalCajas4 = station46Rows.find((r) => r.station === '4 oz')?.total || 0;
+  const totalCajas6 = station46Rows.find((r) => r.station === '6 oz')?.total || 0;
 
   return (
     <div className="space-y-6 animate-in fade-in">
