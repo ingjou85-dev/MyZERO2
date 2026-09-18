@@ -27,21 +27,31 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
     return `${yyyy}-${mm}-${dd}`;
   };
 
+  const normalizeStation = (st?: string) => {
+    if (!st) return '';
+    if (st === 'Estación 451' || st === 'Estación 51') return 'Estación 452';
+    return st;
+  };
+
   const todayDate = getTodayDateString();
   const [date, setDate] = useState(todayDate);
-  const [station, setStation] = useState(initialRecord?.station || '');
+  const [station, setStation] = useState(normalizeStation(initialRecord?.station));
   const [shift, setShift] = useState(initialRecord?.shift || '');
   const [tech, setTech] = useState(initialRecord?.tech || '');
   const [aux, setAux] = useState(initialRecord?.aux || '');
   const [reference, setReference] = useState(initialRecord?.reference || '');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Referencias filtradas según la estación seleccionada
+  const availableReferences = MASTER_DATA.getReferencesForStation(station);
+
   useEffect(() => {
     if (isOpen) {
       const today = getTodayDateString();
       if (initialRecord) {
+        const normSt = normalizeStation(initialRecord.station);
         setDate(initialRecord.date || today);
-        setStation(initialRecord.station || '');
+        setStation(normSt);
         setShift(initialRecord.shift || '');
         setTech(initialRecord.tech || '');
         setAux(initialRecord.aux || '');
@@ -57,6 +67,15 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
       setErrorMsg('');
     }
   }, [isOpen, initialRecord]);
+
+  const handleStationChange = (newStation: string) => {
+    setStation(newStation);
+    const validRefs = MASTER_DATA.getReferencesForStation(newStation);
+    // Si la referencia actual no corresponde a la nueva estación seleccionada, se reinicia
+    if (reference && !validRefs.includes(reference)) {
+      setReference('');
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -147,7 +166,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
               <select
                 id="prodInpStation"
                 value={station}
-                onChange={(e) => setStation(e.target.value)}
+                onChange={(e) => handleStationChange(e.target.value)}
                 required
                 className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-bold bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
               >
@@ -231,22 +250,43 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
               </select>
             </div>
 
-            {/* 7. REFERENCIA */}
+            {/* 7. REFERENCIA (Bloqueada hasta seleccionar previamente una estación) */}
             <div className="sm:col-span-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Referencia *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700 uppercase">
+                  Referencia *
+                </label>
+                {!station && (
+                  <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    Seleccione una Estación primero
+                  </span>
+                )}
+              </div>
               <select
                 id="prodInpRef"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
+                disabled={!station}
                 required
-                className="w-full border border-slate-300 p-2.5 rounded-lg text-xs font-medium bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                className={`w-full border p-2.5 rounded-lg text-xs font-medium transition ${
+                  !station
+                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none'
+                    : 'border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-emerald-600 focus:outline-none'
+                }`}
+                title={!station ? 'Seleccione una estación previamente para habilitar este campo' : 'Seleccionar referencia'}
               >
-                <option value="">Seleccionar Referencia</option>
-                {MASTER_DATA.references.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
+                {!station ? (
+                  <option value="">-- Campo inactivo: Seleccione una Estación previamente --</option>
+                ) : (
+                  <>
+                    <option value="">Seleccionar Referencia ({station})</option>
+                    {availableReferences.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
           </div>

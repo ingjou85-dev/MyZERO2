@@ -71,7 +71,7 @@ export const MaintenanceSummaryTab: React.FC<MaintenanceSummaryTabProps> = ({ re
 
   filteredRecords.forEach((r) => {
     const m = r.machine || 'Sin Asignar';
-    const st = r.station || MASTER_DATA.getStationForMachine(m) || 'Estación 51';
+    const st = r.station || MASTER_DATA.getStationForMachine(m) || 'Estación 452';
     if (!machineDowntime[m]) {
       machineDowntime[m] = {
         machine: m,

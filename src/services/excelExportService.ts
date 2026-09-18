@@ -115,22 +115,23 @@ export const ExcelExportService = {
   },
 
   /**
-   * Exporta la consolidación de producción a Excel (.xlsx) con las 15 columnas exactas:
-   * 1. ESTACIÓN
-   * 2. USUARIO (extraer únicamente el primer nombre del operador)
-   * 3. CLIENTE (referencia de la caja)
-   * 4. CANTIDAD TOTAL TRAZABILIDAD FINALIZADAS
-   * 5. SUMATORIA PESO FINAL CAJA
-   * 6. CANTIDAD TOTAL DE CAJAS REGISTRADAS
-   * 7. SUMATORIA DE DESPERDICIO DE CUADRE
-   * 8. SUMATORIA DE DESPERDICIO DE ENCERADO
-   * 9. SUMATORIA DE DESPERDICIO DE MERMA
-   * 10. SUMATORIA DE DESPERDICIO DE ROLLO
-   * 11. SUMATORIA DE DESPERDICIO DE BORDE
-   * 12. SUMATORIA DE DESPERDICIO DE PUNTA
-   * 13. CÓDIGO DE ROLLO (listar/concatenar todos los códigos asignados al registro)
-   * 14. MECÁNICO DEL REGISTRO TURNO
-   * 15. AUXILIAR DEL REGISTRO TURNO
+   * Exporta la consolidación de producción a Excel (.xlsx) con las columnas exactas:
+   * 1. FECHA
+   * 2. ESTACIÓN
+   * 3. USUARIO (extraer únicamente el primer nombre del operador)
+   * 4. CLIENTE (referencia de la caja)
+   * 5. CANTIDAD TOTAL TRAZABILIDAD FINALIZADAS
+   * 6. SUMATORIA PESO FINAL CAJA
+   * 7. CANTIDAD TOTAL DE CAJAS REGISTRADAS
+   * 8. SUMATORIA DE DESPERDICIO DE CUADRE
+   * 9. SUMATORIA DE DESPERDICIO DE ENCERADO
+   * 10. SUMATORIA DE DESPERDICIO DE MERMA
+   * 11. SUMATORIA DE DESPERDICIO DE ROLLO
+   * 12. SUMATORIA DE DESPERDICIO DE BORDE
+   * 13. SUMATORIA DE DESPERDICIO DE PUNTA
+   * 14. CÓDIGO DE ROLLO (listar/concatenar todos los códigos asignados al registro)
+   * 15. MECÁNICO DEL REGISTRO TURNO
+   * 16. AUXILIAR DEL REGISTRO TURNO
    */
   exportProductionConsolidatedToExcel: ({
     boxes = [],
@@ -329,8 +330,9 @@ export const ExcelExportService = {
       }
     }
 
-    // Definición estricta de las 15 columnas en el orden solicitado
+    // Definición estricta de las columnas con FECHA como primera columna
     const headers = [
+      'FECHA',
       'ESTACIÓN',
       'USUARIO',
       'CLIENTE',
@@ -354,6 +356,7 @@ export const ExcelExportService = {
       const rollCodesStr = rollList.length > 0 ? rollList.join(', ') : '-';
 
       return {
+        'FECHA': g.date || '-',
         'ESTACIÓN': g.station || 'Sin Estación',
         'USUARIO': formatFirstNameUpper(g.operator) || '-',
         'CLIENTE': g.reference || '-',
@@ -381,6 +384,7 @@ export const ExcelExportService = {
 
     // Anchos de columna optimizados para visualización profesional
     const columnWidths = [
+      { wch: 14 }, // FECHA
       { wch: 18 }, // ESTACIÓN
       { wch: 18 }, // USUARIO
       { wch: 26 }, // CLIENTE

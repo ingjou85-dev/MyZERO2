@@ -128,7 +128,7 @@ export const TurnFinalizeSummaryModal: React.FC<TurnFinalizeSummaryModalProps> =
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-slate-600 pt-0.5 text-[11px]">
               <div>
                 <span className="text-slate-400 block text-[10px] font-bold uppercase">Estación:</span>
-                <strong className="text-slate-800 font-bold">{turn?.station || 'Estación 51'}</strong>
+                <strong className="text-slate-800 font-bold">{turn?.station || 'Estación 452'}</strong>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] font-bold uppercase">Turno:</span>

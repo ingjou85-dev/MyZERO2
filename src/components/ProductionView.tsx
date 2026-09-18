@@ -98,7 +98,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     return `${hh}:${mm}`;
   };
 
-  const userStation = activeTurn?.station || (session?.role === 'Administrador' ? 'Estación 51' : 'Estación 51');
+  const userStation = activeTurn?.station || (session?.role === 'Administrador' ? 'Estación 452' : 'Estación 452');
   const availableMachines = session?.role === 'Administrador' && !activeTurn
     ? MASTER_DATA.machines
     : userStation
@@ -254,7 +254,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
 
   const handleStartNewBox = () => {
     const nextBoxNum = nextUserBoxNumber;
-    const initialStation = userStation || 'Estación 51';
+    const initialStation = userStation || 'Estación 452';
     const defaultMachine = availableMachines.length > 0 ? availableMachines[0] : '';
 
     const newRec: ProductionQualityRecord = {
@@ -322,7 +322,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     const updated: ProductionQualityRecord = {
       ...currentRecord,
       boxNumber,
-      station: station || userStation || MASTER_DATA.getStationForMachine(machine) || 'Estación 51',
+      station: station || userStation || MASTER_DATA.getStationForMachine(machine) || 'Estación 452',
       machine,
       reference,
       weightBottom: wb,
@@ -422,7 +422,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     const finalized: ProductionQualityRecord = {
       ...currentRecord,
       boxNumber,
-      station: station || userStation || MASTER_DATA.getStationForMachine(machine) || 'Estación 51',
+      station: station || userStation || MASTER_DATA.getStationForMachine(machine) || 'Estación 452',
       machine,
       reference,
       weightBottom: wb,
@@ -476,7 +476,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
     setCurrentStep(targetStep);
 
     setBoxNumber(rec.boxNumber || 1);
-    setStation(rec.station || userStation || 'Estación 51');
+    setStation(rec.station || userStation || 'Estación 452');
     setMachine(rec.machine || availableMachines[0]);
     setReference(rec.reference || activeTurn?.reference || MASTER_DATA.references[0]);
     setWeightBottom(rec.weightBottom !== undefined ? String(rec.weightBottom) : '');
@@ -1524,7 +1524,12 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
 
       {/* TAB 3: RESUMEN (SOLO ADMINISTRADORES) */}
       {(activeTab === 'RESUMEN' || activeTab === 'DASHBOARD') && session?.role === 'Administrador' && (
-        <ProductionSummaryTab records={records} />
+        <ProductionSummaryTab
+          records={records}
+          turnRecords={turnRecords}
+          wasteRecords={wasteRecords}
+          traceabilityRecords={traceabilityRecords}
+        />
       )}
     </section>
   );

@@ -77,7 +77,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   const [filterMachine, setFilterMachine] = useState('');
 
   // Máquinas filtradas dinámicamente por la estación del turno activo (o todas para Administrador sin turno)
-  const userStation = activeTurn?.station || (session?.role === 'Administrador' ? 'Estación 51' : 'Estación 51');
+  const userStation = activeTurn?.station || (session?.role === 'Administrador' ? 'Estación 452' : 'Estación 452');
   const availableMachines = session?.role === 'Administrador' && !activeTurn
     ? MASTER_DATA.machines
     : userStation
@@ -198,7 +198,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
   }, [failureTime, technicianArrivalTime, closingTime]);
 
   const handleStartNewReport = () => {
-    const initialStation = userStation || 'Estación 51';
+    const initialStation = userStation || 'Estación 452';
 
     const newReport: MaintenanceRecord = {
       id: 'rec-' + Date.now(),
@@ -283,7 +283,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     const finalSol = getEffectiveSolution();
     const defsList = getEffectiveDefectsList();
     const solsList = getEffectiveSolutionsList();
-    const currentMachineStation = MASTER_DATA.getStationForMachine(machine) || userStation || 'Estación 51';
+    const currentMachineStation = MASTER_DATA.getStationForMachine(machine) || userStation || 'Estación 452';
     const effectiveStep = stepOverride !== undefined ? stepOverride : currentStep;
 
     const updated: MaintenanceRecord = {
@@ -415,7 +415,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({
     }
 
     if (!currentRecord) return;
-    const currentMachineStation = MASTER_DATA.getStationForMachine(machine) || userStation || 'Estación 51';
+    const currentMachineStation = MASTER_DATA.getStationForMachine(machine) || userStation || 'Estación 452';
 
     const finalized: MaintenanceRecord = {
       ...currentRecord,

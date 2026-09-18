@@ -213,7 +213,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-400">Estación: </span>
-                  <strong className="text-slate-800 font-bold">{currentUserTurn.station || 'Estación 51'}</strong>
+                  <strong className="text-slate-800 font-bold">{currentUserTurn.station || 'Estación 452'}</strong>
                 </div>
                 <div>
                   <span className="text-slate-400">Turno: </span>

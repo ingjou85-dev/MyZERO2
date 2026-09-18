@@ -1,19 +1,25 @@
 export const MASTER_DATA = {
   stations: [
-    'Estación 51',
-    'Estación 53',
-    'Estación 54',
-    'Estación 55',
+    'Estación 452',
+    'Estación 453',
+    'Estación 454',
+    'Estación 455',
     'Estación 4 oz',
     'Estación 6 oz'
   ],
   stationMachines: {
+    'Estación 452': ['459', '4513', '4514', '4515', '4516'],
+    'Estación 453': ['451', '456', '4517', '4518', '4519'],
+    'Estación 454': ['452', '454', '4511', '4512', '4520'],
+    'Estación 455': ['453', '455', '457', '458', '4510'],
+    'Estación 4 oz': ['401', '402', '403', '404'],
+    'Estación 6 oz': ['601', '602', '603'],
+    // Compatibilidad con registros existentes:
+    'Estación 451': ['459', '4513', '4514', '4515', '4516'],
     'Estación 51': ['459', '4513', '4514', '4515', '4516'],
     'Estación 53': ['451', '456', '4517', '4518', '4519'],
     'Estación 54': ['452', '454', '4511', '4512', '4520'],
-    'Estación 55': ['453', '455', '457', '458', '4510'],
-    'Estación 4 oz': ['401', '402', '403', '404'],
-    'Estación 6 oz': ['601', '602', '603']
+    'Estación 55': ['453', '455', '457', '458', '4510']
   } as Record<string, string[]>,
   technicians: [
     'EDUARDO',
@@ -178,6 +184,12 @@ export const MASTER_DATA = {
     'Prueba especial de llenado caliente'
   ],
   getStationForMachine: (machineNum: string): string => {
+    if (['459', '4513', '4514', '4515', '4516'].includes(machineNum)) return 'Estación 452';
+    if (['451', '456', '4517', '4518', '4519'].includes(machineNum)) return 'Estación 453';
+    if (['452', '454', '4511', '4512', '4520'].includes(machineNum)) return 'Estación 454';
+    if (['453', '455', '457', '458', '4510'].includes(machineNum)) return 'Estación 455';
+    if (['401', '402', '403', '404'].includes(machineNum)) return 'Estación 4 oz';
+    if (['601', '602', '603'].includes(machineNum)) return 'Estación 6 oz';
     for (const [station, machines] of Object.entries(MASTER_DATA.stationMachines)) {
       if (machines.includes(machineNum)) return station;
     }
@@ -186,6 +198,40 @@ export const MASTER_DATA = {
   getMachinesForStation: (stationName?: string): string[] => {
     if (!stationName) return MASTER_DATA.machines;
     return MASTER_DATA.stationMachines[stationName] || MASTER_DATA.machines;
+  },
+  getReferencesForStation: (stationName?: string): string[] => {
+    if (!stationName) return [];
+    const st = stationName.toLowerCase();
+    // Estaciones 452, 453, 454 y 455 (y aliases 51, 53, 54, 55, 451): Carga exclusivamente las referencias de 4.5 oz
+    if (
+      st.includes('452') ||
+      st.includes('453') ||
+      st.includes('454') ||
+      st.includes('455') ||
+      st.includes('451') ||
+      st.includes('51') ||
+      st.includes('53') ||
+      st.includes('54') ||
+      st.includes('55')
+    ) {
+      return MASTER_DATA.references.filter((r) => r.includes('4,5') || r.includes('4.5'));
+    }
+    // Estación 4 oz: Carga exclusivamente las referencias de 4 oz
+    if (st.includes('4 oz') || st.includes('4oz')) {
+      return MASTER_DATA.references.filter(
+        (r) =>
+          (r.includes('4 OZ') || r.includes('4OZ') || r.includes('4 oz')) &&
+          !r.includes('4,5') &&
+          !r.includes('4.5')
+      );
+    }
+    // Estación 6 oz: Carga exclusivamente las referencias de 6 oz
+    if (st.includes('6 oz') || st.includes('6oz')) {
+      return MASTER_DATA.references.filter(
+        (r) => r.includes('6 OZ') || r.includes('6OZ') || r.includes('6 oz')
+      );
+    }
+    return MASTER_DATA.references;
   }
 };
 

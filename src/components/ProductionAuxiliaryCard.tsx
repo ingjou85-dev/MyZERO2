@@ -100,13 +100,13 @@ export const ProductionAuxiliaryCard: React.FC<ProductionAuxiliaryCardProps> = (
       };
 
       await RecordService.saveTraceabilityRecord(record);
-      setTrazSuccess(`✓ Rollo ${record.rollCode} guardado exitosamente en Firestore.`);
+      setTrazSuccess(`✓ Rollo ${record.rollCode} guardado exitosamente.`);
       setTrazMachine('');
       setTrazRollCode('');
       setIsSavingTraz(false);
     } catch (error) {
       console.error('Error al guardar trazabilidad:', error);
-      setTrazAlert('Error al conectar con Firestore. Intente de nuevo.');
+      setTrazAlert('Error al guardar el registro. Intente de nuevo.');
       setIsSavingTraz(false);
     }
   };
@@ -196,14 +196,14 @@ export const ProductionAuxiliaryCard: React.FC<ProductionAuxiliaryCardProps> = (
       };
 
       await RecordService.saveWasteRecord(record);
-      setWasteSuccess(`✓ Desperdicio (${totalWasteKg.toFixed(2)} kg) guardado en Firestore.`);
+      setWasteSuccess(`✓ Desperdicio (${totalWasteKg.toFixed(2)} kg) guardado exitosamente.`);
       setSelectedReasons(new Set());
       setWeights({});
       setOtherDescription('');
       setIsSavingWaste(false);
     } catch (error) {
       console.error('Error al guardar desperdicio:', error);
-      setWasteAlert('Error al conectar con Firestore. Intente de nuevo.');
+      setWasteAlert('Error al guardar el registro. Intente de nuevo.');
       setIsSavingWaste(false);
     }
   };
@@ -357,7 +357,7 @@ export const ProductionAuxiliaryCard: React.FC<ProductionAuxiliaryCardProps> = (
                     setTrazAlert('');
                     setTrazSuccess('');
                   }}
-                  placeholder="EJ: ROL-451-9824"
+                  placeholder="EJ: ROL-452-9824"
                   className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 uppercase focus:bg-white focus:ring-2 focus:ring-prod-600 focus:outline-none"
                 />
               </div>
