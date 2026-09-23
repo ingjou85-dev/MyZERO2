@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MaintenanceRecord } from '../types.ts';
 import { MASTER_DATA } from '../constants/masterData.ts';
 import {
@@ -12,17 +12,36 @@ import {
   Timer,
   UserCheck,
   TrendingUp,
-  Cpu
+  Cpu,
+  X,
+  Info,
+  Activity,
+  ChevronRight
 } from 'lucide-react';
 
 interface MaintenanceSummaryTabProps {
   records: MaintenanceRecord[];
 }
 
+type KpiModalType = 'MAQUINAS_ON' | 'MAQUINAS_DETENIDAS' | 'MAQUINAS_EN_PROCESO' | null;
+
 export const MaintenanceSummaryTab: React.FC<MaintenanceSummaryTabProps> = ({ records }) => {
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
+  const [activeModal, setActiveModal] = useState<KpiModalType>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveModal(null);
+      }
+    };
+    if (activeModal) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeModal]);
 
   // Filtrar registros por fecha (o todos si está vacío)
   const filteredRecords = records.filter((r) => {
@@ -30,18 +49,71 @@ export const MaintenanceSummaryTab: React.FC<MaintenanceSummaryTabProps> = ({ re
     return true;
   });
 
-  // KPIs Generales
+  // ==========================================
+  // KPIs EJECUTIVOS SUPERIORES
+  // ==========================================
+  // 1. Total de Reportes: Sin cambios (mantiene la contabilización general de todos los reportes registrados)
   const totalReports = filteredRecords.length;
+
+  // Total de máquinas registradas en planta (catálogo maestro de 27 máquinas)
+  const allRegisteredMachines = MASTER_DATA.machines;
+  const totalRegisteredCount = allRegisteredMachines.length;
+
+  // Reportes activos en estado Pausado o En Proceso:
+  // Considera reportes en el período seleccionado (o los activos en planta si se consulta la fecha actual)
+  const todayStr = new Date().toISOString().split('T')[0];
+  const activeReports = records.filter((r) => {
+    const isActivo = r.status === 'PAUSADO' || r.status === 'EN_PROCESO';
+    if (!isActivo) return false;
+    if (selectedDate) {
+      if (selectedDate === todayStr) return true;
+      return r.date === selectedDate;
+    }
+    return true;
+  });
+
+  // Máquinas con reportes activos en estado Pausado o En Proceso
+  const machinesWithActiveReportsSet = new Set<string>();
+  activeReports.forEach((r) => {
+    if (r.machine) machinesWithActiveReportsSet.add(r.machine);
+  });
+  const machinesWithActiveReports = Array.from(machinesWithActiveReportsSet);
+
+  // 2. Máquinas On (Reemplaza a "Tiempo Muerto Total"):
+  // Lógica: Muestra el total de máquinas activas y operativas en planta.
+  // Fórmula: (Total de máquinas registradas) - (Máquinas con reportes activos en estado Pausado o En Proceso)
+  const maquinasOnList = allRegisteredMachines.filter((m) => !machinesWithActiveReportsSet.has(m));
+  const maquinasOnCount = Math.max(0, totalRegisteredCount - machinesWithActiveReports.length);
+
+  // 3. Máquinas Detenidas (Reemplaza a "Promedio Espera Mecánico"):
+  // Lógica: Conteo de máquinas que requieren atención pero aún no han sido intervenidas.
+  // Fórmula: Cantidad de reportes activos en estado Pausado que no tienen un mecánico asignado (campo de mecánico vacío o nulo).
+  const maquinasDetenidasReports = activeReports.filter((r) => {
+    if (r.status !== 'PAUSADO') return false;
+    const hasTech = Boolean(r.solvingTechnician?.trim() || r.technician?.trim());
+    return !hasTech;
+  });
+  const maquinasDetenidasCount = maquinasDetenidasReports.length;
+
+  // 4. Máquinas en Proceso (Reemplaza a "Efectividad de Solución"):
+  // Lógica: Conteo de máquinas que actualmente están siendo atendidas por el personal técnico.
+  // Fórmula: Cantidad de reportes de mantenimiento activos que ya cuentan con un mecánico asignado/digitado (paso 4 completado).
+  const maquinasEnProcesoReports = activeReports.filter((r) => {
+    const isActivo = r.status === 'PAUSADO' || r.status === 'EN_PROCESO';
+    if (!isActivo) return false;
+    const hasTech = Boolean(
+      r.solvingTechnician?.trim() ||
+      r.technician?.trim() ||
+      (r.currentStep && r.currentStep > 4)
+    );
+    return hasTech;
+  });
+  const maquinasEnProcesoCount = maquinasEnProcesoReports.length;
+
+  // Cálculos complementarios para gráficos de tiempo
   const totalDowntimeMin = filteredRecords.reduce((acc, r) => acc + (r.totalDowntimeMin || 0), 0);
   const totalWaitTimeMin = filteredRecords.reduce((acc, r) => acc + (r.arrivalTimeMin || 0), 0);
   const totalRepairTimeMin = filteredRecords.reduce((acc, r) => acc + (r.repairTimeMin || 0), 0);
-  
-  const avgDowntimeMin = totalReports > 0 ? Math.round(totalDowntimeMin / totalReports) : 0;
-  const avgWaitTimeMin = totalReports > 0 ? Math.round(totalWaitTimeMin / totalReports) : 0;
-  const avgRepairTimeMin = totalReports > 0 ? Math.round(totalRepairTimeMin / totalReports) : 0;
-
-  const effectiveCount = filteredRecords.filter((r) => r.effectiveSolution === 'Sí').length;
-  const effectivenessRate = totalReports > 0 ? Math.round((effectiveCount / totalReports) * 100) : 100;
 
   // Defectos más recurrentes
   const defectCounts: Record<string, { count: number; downtime: number }> = {};
@@ -132,8 +204,9 @@ export const MaintenanceSummaryTab: React.FC<MaintenanceSummaryTabProps> = ({ re
 
       {/* KPI METRIC CARDS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        {/* 1. TOTAL DE REPORTES (Sin cambios) */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="p-3 bg-maint-50 text-maint-600 rounded-xl border border-maint-200">
+          <div className="p-3 bg-slate-100 text-slate-700 rounded-xl border border-slate-200">
             <Wrench className="w-5 h-5" />
           </div>
           <div>
@@ -141,53 +214,83 @@ export const MaintenanceSummaryTab: React.FC<MaintenanceSummaryTabProps> = ({ re
               Total Reportes
             </span>
             <span className="text-xl font-black text-slate-900">{totalReports}</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="p-3 bg-rose-50 text-rose-600 rounded-xl border border-rose-200">
-            <Timer className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-              Tiempo Muerto Total
-            </span>
-            <span className="text-xl font-black text-slate-900">{totalDowntimeMin} min</span>
             <span className="text-[10px] text-slate-400 block font-mono">
-              ~{(totalDowntimeMin / 60).toFixed(1)} hrs
+              Registros en período
             </span>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl border border-blue-200">
-            <Clock className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-              Prom. Espera Técnico
-            </span>
-            <span className="text-xl font-black text-blue-700">{avgWaitTimeMin} min</span>
-            <span className="text-[10px] text-slate-400 block font-mono">
-              Solución: {avgRepairTimeMin} min
-            </span>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-200">
+        {/* 2. MÁQUINAS ON (Reemplaza a "Tiempo Muerto Total") */}
+        <button
+          type="button"
+          onClick={() => setActiveModal('MAQUINAS_ON')}
+          className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3 text-left hover:border-emerald-400 hover:shadow-md transition cursor-pointer group"
+          title="Ver detalle de máquinas operativas"
+        >
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-200 group-hover:bg-emerald-600 group-hover:text-white transition">
             <CheckCircle2 className="w-5 h-5" />
           </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-              Efectividad Solución
-            </span>
-            <span className="text-xl font-black text-emerald-700">{effectivenessRate}%</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                Máquinas On
+              </span>
+              <Info className="w-3 h-3 text-slate-300 group-hover:text-emerald-600 transition" />
+            </div>
+            <span className="text-xl font-black text-emerald-700 block">{maquinasOnCount}</span>
             <span className="text-[10px] text-slate-400 block font-mono">
-              {effectiveCount} de {totalReports} efectivas
+              {maquinasOnCount} de {totalRegisteredCount} operativas
             </span>
           </div>
-        </div>
+        </button>
+
+        {/* 3. MÁQUINAS DETENIDAS (Reemplaza a "Promedio Espera Mecánico") */}
+        <button
+          type="button"
+          onClick={() => setActiveModal('MAQUINAS_DETENIDAS')}
+          className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3 text-left hover:border-amber-400 hover:shadow-md transition cursor-pointer group"
+          title="Ver detalle de máquinas detenidas sin mecánico asignado"
+        >
+          <div className="p-3 bg-amber-50 text-amber-600 rounded-xl border border-amber-200 group-hover:bg-amber-600 group-hover:text-white transition">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                Máquinas Detenidas
+              </span>
+              <Info className="w-3 h-3 text-slate-300 group-hover:text-amber-600 transition" />
+            </div>
+            <span className="text-xl font-black text-amber-700 block">{maquinasDetenidasCount}</span>
+            <span className="text-[10px] text-slate-400 block font-mono">
+              Sin mecánico asignado
+            </span>
+          </div>
+        </button>
+
+        {/* 4. MÁQUINAS EN PROCESO (Reemplaza a "Efectividad de Solución") */}
+        <button
+          type="button"
+          onClick={() => setActiveModal('MAQUINAS_EN_PROCESO')}
+          className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3 text-left hover:border-blue-400 hover:shadow-md transition cursor-pointer group"
+          title="Ver detalle de máquinas en proceso con mecánico"
+        >
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl border border-blue-200 group-hover:bg-blue-600 group-hover:text-white transition">
+            <UserCheck className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                Máquinas en Proceso
+              </span>
+              <Info className="w-3 h-3 text-slate-300 group-hover:text-blue-600 transition" />
+            </div>
+            <span className="text-xl font-black text-blue-700 block">{maquinasEnProcesoCount}</span>
+            <span className="text-[10px] text-slate-400 block font-mono">
+              Con mecánico asignado
+            </span>
+          </div>
+        </button>
       </div>
 
       {/* COMPARATIVA TIEMPO SOLUCIÓN VS ESPERA MECÁNICO */}
@@ -339,6 +442,313 @@ export const MaintenanceSummaryTab: React.FC<MaintenanceSummaryTabProps> = ({ re
           </div>
         </div>
       </div>
+
+      {/* CUADRO DE INFORMACIÓN / MODAL INTERACTIVO DE KPIS */}
+      {activeModal && (
+        <div
+          id="modalMaintKpiDetail"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in"
+          onClick={() => setActiveModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* ENCABEZADO DEL MODAL */}
+            <div
+              className={`p-4 text-white flex justify-between items-center ${
+                activeModal === 'MAQUINAS_ON'
+                  ? 'bg-emerald-800'
+                  : activeModal === 'MAQUINAS_DETENIDAS'
+                  ? 'bg-amber-700'
+                  : 'bg-blue-800'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl">
+                  {activeModal === 'MAQUINAS_ON' && <CheckCircle2 className="w-6 h-6 text-emerald-300" />}
+                  {activeModal === 'MAQUINAS_DETENIDAS' && <AlertTriangle className="w-6 h-6 text-amber-300" />}
+                  {activeModal === 'MAQUINAS_EN_PROCESO' && <UserCheck className="w-6 h-6 text-blue-300" />}
+                </div>
+                <div>
+                  <h3 className="font-black text-sm uppercase tracking-wide">
+                    {activeModal === 'MAQUINAS_ON' && 'Detalle: Máquinas On (Operativas)'}
+                    {activeModal === 'MAQUINAS_DETENIDAS' && 'Detalle: Máquinas Detenidas'}
+                    {activeModal === 'MAQUINAS_EN_PROCESO' && 'Detalle: Máquinas en Proceso'}
+                  </h3>
+                  <p className="text-xs text-white/80">
+                    {activeModal === 'MAQUINAS_ON' &&
+                      `${maquinasOnCount} de ${totalRegisteredCount} máquinas operativas en planta`}
+                    {activeModal === 'MAQUINAS_DETENIDAS' &&
+                      `${maquinasDetenidasCount} reporte(s) pausados en espera de asignación técnica`}
+                    {activeModal === 'MAQUINAS_EN_PROCESO' &&
+                      `${maquinasEnProcesoCount} reporte(s) activos atendidos con mecánico asignado`}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
+                title="Cerrar modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* CONTENIDO SCROLLABLE DEL MODAL */}
+            <div className="p-5 overflow-y-auto max-h-[60vh] space-y-4">
+              {/* MODAL: MÁQUINAS ON */}
+              {activeModal === 'MAQUINAS_ON' && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800 flex items-center justify-between">
+                    <span className="font-bold flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Equipos en operación normal sin paradas activas
+                    </span>
+                    <span className="font-black font-mono bg-emerald-100 px-2 py-0.5 rounded text-emerald-900">
+                      {maquinasOnCount} / {totalRegisteredCount}
+                    </span>
+                  </div>
+
+                  {maquinasOnList.length === 0 ? (
+                    <div className="p-8 text-center text-slate-400 italic text-xs">
+                      No hay máquinas operativas registradas en este momento.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                      {maquinasOnList.map((mach) => {
+                        const st = MASTER_DATA.getStationForMachine(mach) || 'Planta';
+                        return (
+                          <div
+                            key={mach}
+                            className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between hover:border-emerald-300 hover:bg-emerald-50/40 transition"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-black text-slate-900 font-mono">
+                                Máq. {mach}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                ON
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-medium text-slate-500 truncate" title={st}>
+                              {st}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* MODAL: MÁQUINAS DETENIDAS */}
+              {activeModal === 'MAQUINAS_DETENIDAS' && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-center justify-between">
+                    <span className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      Reportes activos en estado Pausado sin mecánico asignado
+                    </span>
+                    <span className="font-black font-mono bg-amber-100 px-2 py-0.5 rounded text-amber-950">
+                      {maquinasDetenidasCount} pendientes
+                    </span>
+                  </div>
+
+                  {maquinasDetenidasReports.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                      <p className="text-xs font-bold text-slate-700">
+                        ¡Excelente! No hay máquinas detenidas sin mecánico asignado.
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Todos los reportes activos cuentan con personal técnico o están en proceso.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {maquinasDetenidasReports.map((r) => {
+                        const mach = r.machine || 'Sin Asignar';
+                        const st = r.station || MASTER_DATA.getStationForMachine(mach) || 'Estación';
+                        const def =
+                          r.defect ||
+                          (r.defects && r.defects.length > 0 ? r.defects.join(', ') : 'Sin defecto especificado');
+                        return (
+                          <div
+                            key={r.id}
+                            className="bg-amber-50/40 border border-amber-200 rounded-xl p-3.5 space-y-2 hover:border-amber-300 transition"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-black text-slate-900 font-mono bg-white px-2 py-0.5 rounded-lg border border-amber-200">
+                                  Máquina {mach}
+                                </span>
+                                <span className="text-xs font-bold text-slate-700">{st}</span>
+                              </div>
+                              <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                Pausado (Sin Mecánico)
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] pt-1 border-t border-amber-100">
+                              <div>
+                                <span className="text-slate-400 block text-[9px] uppercase font-bold">
+                                  Reporte
+                                </span>
+                                <span className="font-mono font-bold text-slate-800">
+                                  #{r.reportNumber || '---'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9px] uppercase font-bold">
+                                  Hora Parada
+                                </span>
+                                <span className="font-mono font-bold text-slate-800">
+                                  {r.failureTime || '--:--'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9px] uppercase font-bold">
+                                  Operario
+                                </span>
+                                <span className="font-bold text-slate-700 truncate block">
+                                  {r.operator || 'N/A'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9px] uppercase font-bold">
+                                  Mecánico
+                                </span>
+                                <span className="font-bold text-rose-600 italic">No asignado</span>
+                              </div>
+                            </div>
+
+                            <div className="text-[11px] bg-white/80 p-2 rounded-lg border border-amber-100 text-slate-700">
+                              <span className="text-slate-400 font-bold mr-1">Falla / Defecto:</span>
+                              <span className="font-medium">{def}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* MODAL: MÁQUINAS EN PROCESO */}
+              {activeModal === 'MAQUINAS_EN_PROCESO' && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-xs text-blue-900 flex items-center justify-between">
+                    <span className="font-bold flex items-center gap-1.5">
+                      <UserCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                      Reportes activos atendidos con mecánico asignado
+                    </span>
+                    <span className="font-black font-mono bg-blue-100 px-2 py-0.5 rounded text-blue-950">
+                      {maquinasEnProcesoCount} en proceso
+                    </span>
+                  </div>
+
+                  {maquinasEnProcesoReports.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200">
+                      <CheckCircle2 className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                      <p className="text-xs font-bold text-slate-700">
+                        No hay máquinas en proceso de intervención técnica en este momento.
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        No se registran reportes activos con técnicos asignados.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {maquinasEnProcesoReports.map((r) => {
+                        const mach = r.machine || 'Sin Asignar';
+                        const st = r.station || MASTER_DATA.getStationForMachine(mach) || 'Estación';
+                        const def =
+                          r.defect ||
+                          (r.defects && r.defects.length > 0 ? r.defects.join(', ') : 'Sin defecto reportado');
+                        const tech = r.solvingTechnician || r.technician || 'Mecánico asignado';
+                        return (
+                          <div
+                            key={r.id}
+                            className="bg-blue-50/40 border border-blue-200 rounded-xl p-3.5 space-y-2 hover:border-blue-300 transition"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-black text-slate-900 font-mono bg-white px-2 py-0.5 rounded-lg border border-blue-200">
+                                  Máquina {mach}
+                                </span>
+                                <span className="text-xs font-bold text-slate-700">{st}</span>
+                              </div>
+                              <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <Wrench className="w-3 h-3 text-blue-600" />
+                                {r.status === 'PAUSADO' ? 'Pausado c/ Técnico' : 'En Atención Técnica'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] pt-1 border-t border-blue-100">
+                              <div>
+                                <span className="text-slate-400 block text-[9px] uppercase font-bold">
+                                  Reporte
+                                </span>
+                                <span className="font-mono font-bold text-slate-800">
+                                  #{r.reportNumber || '---'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9px] uppercase font-bold">
+                                  Mecánico Asignado
+                                </span>
+                                <span className="font-bold text-blue-700 truncate block">
+                                  {tech}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9px] uppercase font-bold">
+                                  H. Parada / Llegada
+                                </span>
+                                <span className="font-mono font-bold text-slate-800">
+                                  {r.failureTime || '--:--'} / {r.technicianArrivalTime || 'En camino'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9px] uppercase font-bold">
+                                  Estado Flujo
+                                </span>
+                                <span className="font-bold text-slate-700">
+                                  Paso {r.currentStep || 4} de 7
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="text-[11px] bg-white/80 p-2 rounded-lg border border-blue-100 text-slate-700">
+                              <span className="text-slate-400 font-bold mr-1">Falla / Defecto:</span>
+                              <span className="font-medium">{def}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* PIE DEL MODAL */}
+            <div className="bg-slate-50 p-3.5 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition"
+              >
+                Entendido / Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

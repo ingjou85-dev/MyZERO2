@@ -157,6 +157,7 @@ export const MASTER_DATA = {
     'UPAK 4,5 OZ',
     'EMPRESS 4,5 OZ',
     'INDUSMIDA 4,5 OZ',
+    'SUPLISOL 4.5 OZ',
     'ALEMANIA 4 OZ',
     'LANCA 4 OZ',
     'CUP CONE 4 OZ',
